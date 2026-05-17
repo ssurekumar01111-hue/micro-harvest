@@ -1,0 +1,23 @@
+# Firebase
+**/google-services.json
+**/GoogleService-Info.plist
+**/firebase_options.dart
+functions/.env
+**/.env
+**/.env.local
+
+# Flutter
+**/.dart_tool/
+**/build/
+**/*.g.dart
+**/*.freezed.dart
+**/pubspec.lock
+
+# Node
+**/node_modules/
+functions/lib/
+
+# IDE
+.idea/
+.vscode/
+*.iml
