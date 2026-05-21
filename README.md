@@ -1,82 +1,59 @@
-# Micro-Harvest 🌾
+# Micro-Harvest
 
-> AI-powered agri-logistics platform connecting 
-> Growers, Producers, and Transporters.
-> Built for the Google Cloud Rapid Agent Hackathon 2026.
-
-## What it does
-Micro-Harvest is a three-sided marketplace that 
-uses a Gemini AI agent to match surplus crop 
-sellers (Growers) with artisanal buyers (Producers) 
-and local haulers (Transporters) in real time.
+Micro-Harvest is an AI-powered agricultural surplus marketplace connecting growers, producers, and transporters across India to streamline supply chain logistics, optimize freight matching, and reduce post-harvest waste through intelligent, real-time spatial data.
 
 ## Architecture
-- **Grower App** — Natural language listing 
-  creation via Gemini AI agent
-- **Producer App** — Geo-filtered surplus 
-  discovery with Elastic MCP matching
-- **Transporter App** — Haul alerts, GPS 
-  gate confirmation, earnings tracking
-- **Firebase Cloud Functions** — 8 TypeScript 
-  functions handling all business logic
-- **Elastic MCP** — Geo-spatial matching of 
-  Producers and Transporters within radius
-- **Gemini 3.1 Flash Lite** — Natural language 
-  parsing and listing summary generation
+Micro-Harvest is a multi-platform ecosystem built for agricultural logistics, featuring AI-driven matching and real-time tracking across mobile and web interfaces. It leverages Firebase for backend infrastructure, ensuring seamless data synchronization between all actors, while utilizing Elasticsearch for high-performance spatial queries. The platform provides tailored interfaces for each stakeholder, optimizing crop listing, haul management, and administrative oversight.
+
+- **apps/grower** (Flutter Android)
+- **apps/producer** (Flutter Android)
+- **apps/transporter** (Flutter Android)
+- **apps/admin** (Flutter Web — https://micro-harvest.web.app)
+
+## Elastic Track Integration
+- **MCP Endpoint:** `https://asia-south1-micro-harvest.cloudfunctions.net`
+- **Agent Builder Tools:**
+    - `search_crop_listings`: Queries active surplus crops using spatial criteria.
+    - `find_nearby_transporters`: Locates available transporters within a defined radius.
+- **Gemini & Elasticsearch:** Gemini utilizes tool-calling to convert conversational requests (e.g., "Find transport for 5 tons of Pinot Noir near Nashik") into structured queries against the Elasticsearch indices.
+- **Indices:**
+    - `micro-harvest-listings`: `geo_point` mapping for efficient location-based matching.
+    - `users`: `geo_point` mapping for transporter and producer positioning.
+- **Real-time Sync:** All Cloud Functions maintain Elasticsearch sync; `onUserSync` automatically indexes/updates transporter availability and location upon profile changes.
 
 ## Tech Stack
-| Layer | Technology |
-|---|---|
-| Mobile Apps | Flutter 3.x (3 apps) |
-| State Management | BLoC |
-| Backend | Firebase Cloud Functions (TypeScript) |
-| Database | Firestore |
-| Auth | Firebase Auth (Phone OTP + Google) |
-| AI Agent | Gemini 3.1 Flash Lite |
-| Geo Search | Elastic MCP Server |
-| Notifications | Firebase Cloud Messaging |
-| Payments | Stripe Connect (mocked) |
+- **Frontend:** Flutter
+- **Backend:** Firebase (Firestore, Auth, FCM, Cloud Functions, Hosting)
+- **Search & Spatial:** Elasticsearch (Elastic Cloud, asia-south1)
+- **AI:** Gemini 2.5 Flash
+- **Payments:** Stripe, Razorpay-ready
 
-## Agent Flow
-1. Grower types natural language input
-2. Gemini extracts structured listing JSON
-3. Elastic MCP finds nearby Producers + Transporters
-4. Firestore listing created automatically
-5. FCM alerts sent to matched parties
-6. Full handoff lifecycle tracked to settlement
+## Demo Credentials
+- **Grower:** +91 test phone / OTP: 123456
+- **Producer:** +91 test phone / OTP: 123456
+- **Transporter:** +91 test phone / OTP: 123456
+- **Admin:** `admin@microharvest.com` / `Admin@123`
+- **Admin Panel:** https://micro-harvest.web.app
 
-## Setup
-### Prerequisites
-- Flutter 3.x
-- Node.js 22+
-- Firebase CLI
-- Google Cloud CLI
+## Cloud Functions
+1. **agentProcessListing**: AI-powered extraction and indexing for new crop listings.
+2. **onProducerClaim**: Orchestrates producer listing claims and transporter matchmaking.
+3. **onTransporterAccept**: Manages transporter haul request acceptance.
+4. **onGate1Confirm**: Records pickup confirmation and status updates.
+5. **onGate2Confirm**: Handles delivery confirmation and automated payment settlement.
+6. **onDisputeRaised**: Manages dispute logging, admin alerts, and resolution status.
+7. **onUserSync**: Automatically synchronizes user data with Elasticsearch for searchability.
+8. **expireListings**: Scheduled cron job to handle stale listing expirations.
+9. **searchListings**: Facilitates high-performance spatial queries for available hauls.
 
-### Installation
-```bash
-git clone https://github.com/ssurekumar01111-hue/micro-harvest
-cd micro-harvest
-```
+## Setup Instructions
+1. `git clone <repository-url>`
+2. `firebase login`
+3. `cd functions && npm install`
+4. `flutter pub get` in each app directory (`apps/grower`, `apps/producer`, `apps/transporter`, `apps/admin`).
+5. Configure `.env` files in `functions/` with `GEMINI_API_KEY`, `ES_URL`, `ES_API_KEY`, `STRIPE_SECRET_KEY`.
+6. `firebase deploy`
+7. `flutter run` in the desired app directory.
 
-### Cloud Functions
-```bash
-cd functions
-npm install
-cp .env.example .env
-# Fill in your API keys
-firebase deploy --only functions
-```
-
-### Flutter Apps
-```bash
-cd apps/grower && flutter pub get
-cd apps/producer && flutter pub get
-cd apps/transporter && flutter pub get
-```
-
-## Live Demo
-- Deployed Cloud Functions: Firebase (asia-south1)
-- Elastic Search: Elastic Cloud (asia-south1)
-
-## License
-MIT License — see LICENSE file.
+## Payment Flow
+Payment settlement occurs automatically upon Gate 2 confirmation. A Stripe Payment Intent is created, and the total amount is automatically split (80% grower, 15% transporter, 5% platform) and recorded in the Firestore handoff document.
