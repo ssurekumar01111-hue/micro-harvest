@@ -27,4 +27,28 @@ class AgentRepository {
       rethrow;
     }
   }
+
+  Future<Map<String, dynamic>> processConversationTurn({
+    String? conversationId,
+    required String message,
+    required String growerId,
+    required GeoPoint plotLocation,
+  }) async {
+    try {
+      final HttpsCallable callable = _functions.httpsCallable('processConversationTurn');
+      final result = await callable.call({
+        'conversationId': conversationId,
+        'message': message,
+        'growerId': growerId,
+        'plotLocation': {
+          'latitude': plotLocation.latitude,
+          'longitude': plotLocation.longitude,
+        },
+      });
+
+      return Map<String, dynamic>.from(result.data);
+    } catch (e) {
+      rethrow;
+    }
+  }
 }

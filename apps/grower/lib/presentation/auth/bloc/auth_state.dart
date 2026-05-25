@@ -1,5 +1,6 @@
 import 'package:equatable/equatable.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import '../../../../data/models/user_model.dart';
 
 abstract class AuthState extends Equatable {
   @override
@@ -13,6 +14,20 @@ class AuthLoading extends AuthState {}
 class AuthAuthenticated extends AuthState {
   final User user;
   AuthAuthenticated(this.user);
+  @override
+  List<Object?> get props => [user];
+}
+
+class AuthNewUser extends AuthState {
+  final User firebaseUser;
+  AuthNewUser(this.firebaseUser);
+  @override
+  List<Object?> get props => [firebaseUser];
+}
+
+class AuthExistingUser extends AuthState {
+  final UserModel user;
+  AuthExistingUser(this.user);
   @override
   List<Object?> get props => [user];
 }

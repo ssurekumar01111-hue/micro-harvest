@@ -10,8 +10,10 @@ class UserModel {
   final GeoPoint geoPoint;
   final String geohash;
   final double radiusMiles;
+  final List<String> cropInterests;
   final String? stripeAcctId;
   final bool verified;
+  final bool onboardingComplete;
   final DateTime createdAt;
   final List<String> fcmTokens;
 
@@ -23,8 +25,10 @@ class UserModel {
     required this.geoPoint,
     required this.geohash,
     required this.radiusMiles,
+    required this.cropInterests,
     this.stripeAcctId,
     required this.verified,
+    this.onboardingComplete = false,
     required this.createdAt,
     required this.fcmTokens,
   });
@@ -39,8 +43,10 @@ class UserModel {
       geoPoint: data['geoPoint'] ?? const GeoPoint(0, 0),
       geohash: data['geohash'] ?? '',
       radiusMiles: (data['radiusMiles'] ?? 0).toDouble(),
+      cropInterests: List<String>.from(data['cropInterests'] ?? []),
       stripeAcctId: data['stripeAcctId'],
       verified: data['verified'] ?? false,
+      onboardingComplete: data['onboardingComplete'] ?? false,
       createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
       fcmTokens: List<String>.from(data['fcmTokens'] ?? []),
     );
@@ -54,8 +60,10 @@ class UserModel {
       'geoPoint': geoPoint,
       'geohash': geohash,
       'radiusMiles': radiusMiles,
+      'cropInterests': cropInterests,
       'stripeAcctId': stripeAcctId,
       'verified': verified,
+      'onboardingComplete': onboardingComplete,
       'createdAt': Timestamp.fromDate(createdAt),
       'fcmTokens': fcmTokens,
     };

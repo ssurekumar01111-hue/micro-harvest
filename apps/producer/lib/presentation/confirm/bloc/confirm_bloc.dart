@@ -1,6 +1,7 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../../data/repositories/handoff_repository.dart';
 import '../../../../data/repositories/auth_repository.dart';
+import '../../../../data/models/payment_summary.dart';
 import 'confirm_event.dart';
 import 'confirm_state.dart';
 
@@ -30,7 +31,21 @@ class ConfirmBloc extends Bloc<ConfirmEvent, ConfirmState> {
 
       await emit.forEach(
         _handoffRepository.getActiveHandoffs(user.uid),
-        onData: (handoffs) => ConfirmLoaded(handoffs),
+        onData: (handoffs) {
+          final Map<String, PaymentSummary> summaries = {};
+          for (var h in handoffs) {
+            final id = h['handoffId'] as String;
+            if (h['totalAmountUsd'] != null) {
+              summaries[id] = PaymentSummary.fromMap(h);
+            } else if (h['weightKg'] != null && h['askingPricePerTon'] != null) {
+              summaries[id] = PaymentSummary.calculate(
+                weightKg: (h['weightKg'] as num).toDouble(),
+                askingPricePerTon: (h['askingPricePerTon'] as num).toDouble(),
+              );
+            }
+          }
+          return ConfirmLoaded(handoffs, paymentSummaries: summaries);
+        },
       );
     } catch (e) {
       emit(ConfirmError(e.toString()));

@@ -1,6 +1,5 @@
 import * as functions from "firebase-functions/v2";
 import * as admin from "firebase-admin";
-import * as crypto from "crypto";
 import * as geofire from "geofire-common";
 import { ListingStatus } from "../../../packages/core/src/models";
 
@@ -11,19 +10,19 @@ if (admin.apps.length === 0) {
 
 const db = admin.firestore();
 const fcm = admin.messaging();
-const storage = admin.storage();
 
 interface Gate1ConfirmInput {
   handoffId: string;
   transporterId: string;
   gps: { latitude: number; longitude: number };
-  imageBase64: string;
+  imageUrl: string;
+  imageHash: string;
 }
 
 export const onGate1Confirm = functions.https.onCall({ region: "asia-south1" }, async (request) => {
-  const { handoffId, transporterId, gps, imageBase64 } = request.data as Gate1ConfirmInput;
+  const { handoffId, transporterId, gps, imageUrl, imageHash } = request.data as Gate1ConfirmInput;
 
-  if (!handoffId || !transporterId || !gps || !imageBase64) {
+  if (!handoffId || !transporterId || !gps || !imageUrl || !imageHash) {
     throw new functions.https.HttpsError("invalid-argument", "Missing required fields");
   }
 
@@ -58,20 +57,6 @@ export const onGate1Confirm = functions.https.onCall({ region: "asia-south1" }, 
   if (distanceInM > 500) {
     throw new functions.https.HttpsError("failed-precondition", `GPS location is too far from pickup point (${Math.round(distanceInM)}m)`);
   }
-
-  // Upload image to Storage
-  const bucket = storage.bucket();
-  const filePath = `handoffs/${handoffId}/gate1.jpg`;
-  const file = bucket.file(filePath);
-  const buffer = Buffer.from(imageBase64, "base64");
-
-  await file.save(buffer, {
-    metadata: { contentType: "image/jpeg" },
-    public: true
-  });
-
-  const imageUrl = file.publicUrl();
-  const imageHash = crypto.createHash("sha256").update(imageBase64).digest("hex");
 
   // Update handoff and listing
   const batch = db.batch();

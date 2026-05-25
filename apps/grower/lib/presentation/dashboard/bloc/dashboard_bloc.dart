@@ -1,6 +1,7 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../../data/repositories/auth_repository.dart';
 import '../../../../data/repositories/listing_repository.dart';
+import '../../../../data/models/listing_model.dart';
 import 'dashboard_event.dart';
 import 'dashboard_state.dart';
 
@@ -31,11 +32,11 @@ class DashboardBloc extends Bloc<DashboardEvent, DashboardState> {
         _listingRepository.getGrowerListings(userModel.uid),
         onData: (listings) {
           final stats = {
-            'activeListings': listings.where((l) => l.status.name == 'OPEN' || l.status.name == 'MATCHED').length,
+            'activeListings': listings.where((l) => l.status == ListingStatus.open || l.status == ListingStatus.matched).length,
             'totalEarned': listings
-                .where((l) => l.status.name == 'SETTLED')
-                .fold(0.0, (sum, l) => sum + l.askingPriceUSD),
-            'totalHauled': listings.where((l) => l.status.name == 'SETTLED' || l.status.name == 'DELIVERED').length,
+                .where((l) => l.status == ListingStatus.settled)
+                .fold(0.0, (sum, l) => sum + (l.askingPricePerTon ?? 0)),
+            'totalHauled': listings.where((l) => l.status == ListingStatus.settled || l.status == ListingStatus.delivered).length,
           };
           return DashboardLoaded(
             user: userModel,

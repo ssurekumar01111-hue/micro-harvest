@@ -8,6 +8,7 @@
       "codebase": "default",
       "source": "functions",
       "runtime": "nodejs22",
+      "dotenv": true,
       "ignore": [
         "node_modules",
         ".env",
@@ -17,5 +18,12 @@
         "*.local"
       ]
     }
-  ]
+  ],
+  "hosting": {
+    "public": "apps/admin/build/web",
+    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+    "rewrites": [
+      { "source": "**", "destination": "/index.html" }
+    ]
+  }
 }

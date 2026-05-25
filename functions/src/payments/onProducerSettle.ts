@@ -1,88 +1,119 @@
 import * as functions from "firebase-functions/v2";
 import * as admin from "firebase-admin";
-import { ListingStatus } from "../../../packages/core/src/models";
+import Stripe from "stripe";
+import * as dotenv from "dotenv";
 
-// Initialize Firebase Admin if not already initialized
-if (admin.apps.length === 0) {
-  admin.initializeApp();
-}
+dotenv.config();
 
-const db = admin.firestore();
-const fcm = admin.messaging();
-
-interface ProducerSettleInput {
-  handoffId: string;
-  producerId: string;
-}
-
-export const onProducerSettle = functions.https.onCall({ region: "asia-south1" }, async (request) => {
-  const { handoffId, producerId } = request.data as ProducerSettleInput;
-
-  if (!handoffId || !producerId) {
-    throw new functions.https.HttpsError("invalid-argument", "Missing handoffId or producerId");
-  }
-
-  const handoffRef = db.collection("handoffs").doc(handoffId);
-  const handoffDoc = await handoffRef.get();
-
-  if (!handoffDoc.exists) {
-    throw new functions.https.HttpsError("not-found", "Handoff not found");
-  }
-
-  const handoffData = handoffDoc.data()!;
-
-  if (handoffData.producerId !== producerId) {
-    throw new functions.https.HttpsError("permission-denied", "Producer ID mismatch");
-  }
-
-  const listingRef = db.collection("listings").doc(handoffData.listingId);
-  const listingDoc = await listingRef.get();
-
-  if (!listingDoc.exists) {
-    throw new functions.https.HttpsError("not-found", "Listing not found");
-  }
-
-  const listingData = listingDoc.data()!;
-
-  if (listingData.status !== ListingStatus.DELIVERED) {
-    throw new functions.https.HttpsError("failed-precondition", "Listing is not in DELIVERED status");
-  }
-
-  const paymentId = "mock_" + Date.now();
-  const now = admin.firestore.Timestamp.now();
-
-  const batch = db.batch();
-
-  batch.update(handoffRef, {
-    "payment.releasedAt": now,
-    "payment.stripePaymentId": paymentId
-  });
-
-  batch.update(listingRef, {
-    status: ListingStatus.SETTLED,
-    updatedAt: now
-  });
-
-  await batch.commit();
-
-  // Notifications to all 3 parties
-  const userIds = [handoffData.growerId, handoffData.producerId, handoffData.transporterId];
-  const userDocs = await db.collection("users").where(admin.firestore.FieldPath.documentId(), "in", userIds).get();
-  const tokens: string[] = [];
-  userDocs.forEach(doc => {
-    const data = doc.data();
-    if (data.fcmTokens) tokens.push(...data.fcmTokens);
-  });
-
-  if (tokens.length > 0) {
-    await fcm.sendEachForMulticast({
-      tokens,
-      notification: {
-        title: "Payment Released",
-        body: "Transaction complete. Payment has been processed."
-      }
+export const onProducerSettle = functions.https.onCall(
+  { 
+    region: "asia-south1",
+  },
+  async (request) => {
+    const db = admin.firestore();
+    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
+      apiVersion: "2026-04-22.dahlia",
     });
-  }
 
-  return { success: true, paymentId };
-});
+    const { handoffId } = request.data;
+    const producerId = request.auth?.uid;
+
+    if (!handoffId || !producerId) {
+      throw new functions.https.HttpsError(
+        "invalid-argument",
+        "Missing handoffId"
+      );
+    }
+
+    const handoffRef = db.collection("handoffs").doc(handoffId);
+    const handoffSnap = await handoffRef.get();
+
+    if (!handoffSnap.exists) {
+      throw new functions.https.HttpsError("not-found", "Handoff not found");
+    }
+
+    const handoff = handoffSnap.data()!;
+
+    if (handoff.producerId !== producerId) {
+      throw new functions.https.HttpsError(
+        "permission-denied",
+        "Not authorized"
+      );
+    }
+
+    if (handoff.payment?.releasedAt !== null && 
+        handoff.payment?.releasedAt !== undefined &&
+        handoff.payment?.stripePaymentId !== null) {
+      throw new functions.https.HttpsError(
+        "already-exists",
+        "Payment already released"
+      );
+    }
+
+    // Get total amount from handoff payment data
+    // Amount in INR paise
+    const totalUSD = handoff.payment?.totalUSD || 0;
+    const amountPaise = Math.round(totalUSD * 100);
+
+    // Create Stripe Payment Intent
+    const paymentIntent = await stripe.paymentIntents.create({
+      amount: amountPaise,
+      currency: "inr",
+      payment_method_types: ["card"],
+      metadata: {
+        handoffId,
+        listingId: handoff.listingId,
+        producerId: handoff.producerId,
+        growerId: handoff.growerId,
+        transporterId: handoff.transporterId,
+      },
+    });
+
+    // Update handoff with payment intent and releasedAt
+    await handoffRef.update({
+      "payment.stripePaymentId": paymentIntent.id,
+      "payment.stripeClientSecret": paymentIntent.client_secret,
+      "payment.releasedAt": admin.firestore.FieldValue.serverTimestamp(),
+      "payment.currency": "inr",
+      "payment.amountPaise": amountPaise,
+    });
+
+    // Update listing status to SETTLED
+    await db.collection("listings").doc(handoff.listingId).update({
+      status: "SETTLED",
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    // Send FCM to grower and transporter
+    const [growerSnap, transporterSnap] = await Promise.all([
+      db.collection("users").doc(handoff.growerId).get(),
+      db.collection("users").doc(handoff.transporterId).get(),
+    ]);
+
+    const growerTokens = growerSnap.data()?.fcmTokens || [];
+    const transporterTokens = transporterSnap.data()?.fcmTokens || [];
+    const allTokens = [...growerTokens, ...transporterTokens];
+
+    if (allTokens.length > 0) {
+      await admin.messaging().sendEachForMulticast({
+        tokens: allTokens,
+        notification: {
+          title: "Payment Released",
+          body: `Payment of $${totalUSD} has been released`,
+        },
+        data: {
+          type: "PAYMENT_RELEASED",
+          handoffId,
+        },
+      });
+    }
+
+    return {
+      success: true,
+      clientSecret: paymentIntent.client_secret,
+      paymentIntentId: paymentIntent.id,
+      totalUSD,
+      amountPaise,
+    };
+  }
+);

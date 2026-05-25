@@ -1,13 +1,15 @@
-import 'dart:convert';
 import 'dart:io';
+import 'package:crypto/crypto.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import '../models/listing_model.dart';
 import '../models/handoff_model.dart';
 
 class HaulRepository {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseFunctions _functions = FirebaseFunctions.instanceFor(region: 'asia-south1');
+  final FirebaseStorage _storage = FirebaseStorage.instance;
 
   Stream<List<ListingModel>> getAvailableHauls({
     required GeoPoint transporterLocation,
@@ -36,7 +38,12 @@ class HaulRepository {
     required File image,
   }) async {
     final bytes = await image.readAsBytes();
-    final base64Image = base64Encode(bytes);
+    final imageHash = sha256.convert(bytes).toString();
+
+    // Upload to Storage
+    final ref = _storage.ref().child('handoffs/$handoffId/gate1.jpg');
+    await ref.putFile(image, SettableMetadata(contentType: 'image/jpeg'));
+    final imageUrl = await ref.getDownloadURL();
 
     final callable = _functions.httpsCallable('onGate1Confirm');
     await callable.call({
@@ -46,28 +53,35 @@ class HaulRepository {
         'latitude': gps.latitude,
         'longitude': gps.longitude,
       },
-      'imageBase64': base64Image,
+      'imageUrl': imageUrl,
+      'imageHash': imageHash,
     });
   }
 
   Future<void> confirmGate2({
     required String handoffId,
-    required String transporterId,
+    required String producerId,
     required GeoPoint gps,
     required File image,
   }) async {
     final bytes = await image.readAsBytes();
-    final base64Image = base64Encode(bytes);
+    final imageHash = sha256.convert(bytes).toString();
+
+    // Upload to Storage
+    final ref = _storage.ref().child('handoffs/$handoffId/gate2.jpg');
+    await ref.putFile(image, SettableMetadata(contentType: 'image/jpeg'));
+    final imageUrl = await ref.getDownloadURL();
 
     final callable = _functions.httpsCallable('onGate2Confirm');
     await callable.call({
       'handoffId': handoffId,
-      'transporterId': transporterId,
+      'producerId': producerId,
       'gps': {
         'latitude': gps.latitude,
         'longitude': gps.longitude,
       },
-      'imageBase64': base64Image,
+      'imageUrl': imageUrl,
+      'imageHash': imageHash,
     });
   }
 
@@ -75,12 +89,11 @@ class HaulRepository {
     return _firestore
         .collection('handoffs')
         .where('transporterId', isEqualTo: transporterId)
+        .where('gate2', isNull: true) // Filter out handoffs where gate2 (delivery) is already done
         .snapshots()
         .map((snapshot) {
       if (snapshot.docs.isEmpty) return null;
-      // Filter for LOCKED or IN_TRANSIT in app logic or better query
       final handoffs = snapshot.docs.map((doc) => HandoffModel.fromFirestore(doc)).toList();
-      // Simplified: just return the first one for now
       return handoffs.first;
     });
   }
@@ -95,7 +108,68 @@ class HaulRepository {
     return _firestore
         .collection('handoffs')
         .where('transporterId', isEqualTo: transporterId)
+        .where('gate2', isNotEqualTo: null)
         .snapshots()
         .map((snapshot) => snapshot.docs.map((doc) => HandoffModel.fromFirestore(doc)).toList());
+  }
+
+  Stream<List<ListingModel>> getIncomingHaulRequests(String transporterId) {
+    return _firestore
+        .collection('listings')
+        .where('status', isEqualTo: ListingStatus.MATCHED.name)
+        .where('transporterId', isNull: true)
+        .where('matchedTransporterIds', arrayContains: transporterId)
+        .snapshots()
+        .map((snapshot) => snapshot.docs.map((doc) => ListingModel.fromFirestore(doc)).toList());
+  }
+
+  Future<HandoffModel> getHandoff(String handoffId) async {
+    final doc = await _firestore.collection('handoffs').doc(handoffId).get();
+    if (!doc.exists) {
+      throw Exception('Handoff not found');
+    }
+    return HandoffModel.fromFirestore(doc);
+  }
+
+  Future<ListingModel> getListing(String listingId) async {
+    final doc = await _firestore.collection('listings').doc(listingId).get();
+    if (!doc.exists) {
+      throw Exception('Listing not found');
+    }
+    return ListingModel.fromFirestore(doc);
+  }
+
+  Stream<Map<String, dynamic>> getTransporterStats(String transporterId) {
+    return _firestore
+        .collection('handoffs')
+        .where('transporterId', isEqualTo: transporterId)
+        .where('gate2', isNotEqualTo: null)
+        .snapshots()
+        .map((snapshot) {
+      double todayEarnings = 0;
+      int totalHauls = snapshot.docs.length;
+      final now = DateTime.now();
+      final todayStart = DateTime(now.year, now.month, now.day);
+
+      for (var doc in snapshot.docs) {
+        final data = doc.data();
+        final payment = data['payment'] as Map<String, dynamic>?;
+        final gate2 = data['gate2'] as Map<String, dynamic>?;
+        
+        if (payment != null && gate2 != null) {
+          final confirmedAt = (gate2['confirmedAt'] as Timestamp).toDate();
+          final fee = (payment['transporterFeeUSD'] ?? 0).toDouble();
+          
+          if (confirmedAt.isAfter(todayStart)) {
+            todayEarnings += fee;
+          }
+        }
+      }
+
+      return {
+        'todayEarnings': todayEarnings,
+        'totalHauls': totalHauls,
+      };
+    });
   }
 }

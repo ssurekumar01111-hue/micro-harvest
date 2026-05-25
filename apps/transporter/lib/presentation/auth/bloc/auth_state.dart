@@ -14,6 +14,12 @@ class AuthAuthenticated extends AuthState {
   @override
   List<Object?> get props => [user];
 }
+class AuthNewUser extends AuthState {
+  final User user;
+  AuthNewUser(this.user);
+  @override
+  List<Object?> get props => [user];
+}
 class AuthUnauthenticated extends AuthState {}
 class AuthCodeSent extends AuthState {
   final String verificationId;

@@ -2,15 +2,19 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'core/theme/app_theme.dart';
 import 'data/repositories/auth_repository.dart';
 import 'data/repositories/listing_repository.dart';
 import 'data/repositories/agent_repository.dart';
+import 'data/repositories/location_repository.dart';
 import 'presentation/auth/bloc/auth_bloc.dart';
 import 'presentation/auth/bloc/auth_event.dart';
 import 'presentation/auth/bloc/auth_state.dart';
 import 'presentation/auth/screens/phone_otp_screen.dart';
 import 'presentation/auth/screens/otp_verify_screen.dart';
+import 'presentation/onboarding/onboarding_screen.dart';
 import 'presentation/dashboard/bloc/dashboard_bloc.dart';
 import 'presentation/dashboard/screens/dashboard_screen.dart';
 import 'presentation/agent/bloc/agent_bloc.dart';
@@ -18,6 +22,9 @@ import 'presentation/agent/screens/agent_screen.dart';
 import 'presentation/listings/bloc/listings_bloc.dart';
 import 'presentation/listings/screens/listings_screen.dart';
 import 'presentation/listings/screens/listing_detail_screen.dart';
+import 'presentation/listings/screens/create_listing_screen.dart';
+import 'presentation/earnings/screens/earnings_screen.dart';
+import 'presentation/profile/screens/profile_screen.dart';
 
 class MicroHarvestApp extends StatelessWidget {
   const MicroHarvestApp({super.key});
@@ -29,6 +36,7 @@ class MicroHarvestApp extends StatelessWidget {
         RepositoryProvider(create: (context) => AuthRepository()),
         RepositoryProvider(create: (context) => ListingRepository()),
         RepositoryProvider(create: (context) => AgentRepository()),
+        RepositoryProvider(create: (context) => LocationRepository()),
       ],
       child: MultiBlocProvider(
         providers: [
@@ -75,18 +83,30 @@ class _AppViewState extends State<AppView> {
   @override
   void initState() {
     super.initState();
+    _setupRouter();
+    _setupFCM();
+  }
+
+  void _setupRouter() {
     _router = GoRouter(
       initialLocation: '/dashboard',
       refreshListenable: GoRouterRefreshStream(context.read<AuthBloc>().stream),
       redirect: (context, state) {
         final authState = context.read<AuthBloc>().state;
         final bool loggingIn = state.matchedLocation.startsWith('/auth');
+        final bool onboarding = state.matchedLocation == '/onboarding';
 
         if (authState is AuthUnauthenticated) {
           return loggingIn ? null : '/auth/phone';
         }
+        if (authState is AuthNewUser) {
+          return onboarding ? null : '/onboarding';
+        }
+        if (authState is AuthExistingUser) {
+          return (loggingIn || onboarding) ? '/dashboard' : null;
+        }
         if (authState is AuthAuthenticated) {
-          return loggingIn ? '/dashboard' : null;
+          return (loggingIn || onboarding) ? '/dashboard' : null;
         }
         return null;
       },
@@ -103,6 +123,10 @@ class _AppViewState extends State<AppView> {
           },
         ),
         GoRoute(
+          path: '/onboarding',
+          builder: (context, state) => const OnboardingScreen(),
+        ),
+        GoRoute(
           path: '/dashboard',
           builder: (context, state) => const DashboardScreen(),
         ),
@@ -115,6 +139,10 @@ class _AppViewState extends State<AppView> {
           builder: (context, state) => const ListingsScreen(),
           routes: [
             GoRoute(
+              path: 'create',
+              builder: (context, state) => const CreateListingScreen(),
+            ),
+            GoRoute(
               path: ':id',
               builder: (context, state) => ListingDetailScreen(
                 listingId: state.pathParameters['id']!,
@@ -122,8 +150,60 @@ class _AppViewState extends State<AppView> {
             ),
           ],
         ),
+        GoRoute(
+          path: '/profile',
+          builder: (context, state) => const ProfileScreen(),
+        ),
+        GoRoute(
+          path: '/earnings',
+          builder: (context, state) => const EarningsScreen(),
+        ),
       ],
     );
+  }
+
+  void _setupFCM() async {
+    // Request permission
+    await FirebaseMessaging.instance.requestPermission(
+      alert: true,
+      badge: true,
+      sound: true,
+    );
+
+    // Save token if already logged in
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid != null && mounted) {
+      context.read<AuthRepository>().saveFCMToken(uid);
+    }
+
+    // Background message tap
+    FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
+      _handleNotificationNavigation(message.data);
+    });
+
+    // App opened from terminated state
+    RemoteMessage? initialMessage = await FirebaseMessaging.instance.getInitialMessage();
+    if (initialMessage != null) {
+      _handleNotificationNavigation(initialMessage.data);
+    }
+  }
+
+  void _handleNotificationNavigation(Map<String, dynamic> data) {
+    final type = data['type'];
+    final id = data['id'];
+
+    switch (type) {
+      case 'LISTING_MATCHED':
+      case 'LISTING_LOCKED':
+      case 'PAYMENT_SETTLED':
+        if (id != null) _router.push('/listings/$id');
+        break;
+      case 'LISTING_EXPIRED':
+        _router.push('/listings');
+        break;
+      default:
+        _router.push('/dashboard');
+    }
   }
 
   @override

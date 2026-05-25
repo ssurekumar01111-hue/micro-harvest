@@ -61,10 +61,26 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               ],
                             ),
                           ),
-                          const CircleAvatar(
-                            radius: 24,
-                            backgroundColor: AppColors.wheat,
-                            child: Icon(Icons.person, color: AppColors.bark),
+                          GestureDetector(
+                            onTap: () => context.go('/profile'),
+                            child: CircleAvatar(
+                              radius: 24,
+                              backgroundColor: AppColors.wheat,
+                              backgroundImage: state.user.profileImageUrl != null
+                                  ? NetworkImage(state.user.profileImageUrl!)
+                                  : null,
+                              child: state.user.profileImageUrl == null
+                                  ? Text(
+                                      state.user.displayName.isNotEmpty
+                                          ? state.user.displayName[0].toUpperCase()
+                                          : 'G',
+                                      style: AppTextStyles.bodyLarge.copyWith(
+                                        color: AppColors.bark,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    )
+                                  : null,
+                            ),
                           ),
                         ],
                       ),
@@ -77,19 +93,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               value: state.stats['activeListings'].toString(),
                             ),
                           ),
-                          const SizedBox(width: 16),
+                          const SizedBox(width: 10),
                           Expanded(
                             child: StatCard(
                               label: 'Total Earned',
                               value: NumberFormat.compactCurrency(symbol: '\$').format(state.stats['totalEarned']),
                             ),
                           ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: StatCard(
+                              label: 'Total Hauled',
+                              value: state.stats['totalHauled'].toString(),
+                            ),
+                          ),
                         ],
-                      ),
-                      const SizedBox(height: 16),
-                      StatCard(
-                        label: 'Total Crops Hauled',
-                        value: state.stats['totalHauled'].toString(),
                       ),
                       const SizedBox(height: 32),
                       // AI Agent Input Box

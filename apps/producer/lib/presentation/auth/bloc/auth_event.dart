@@ -1,4 +1,5 @@
 import 'package:equatable/equatable.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 abstract class AuthEvent extends Equatable {
   @override
@@ -30,4 +31,11 @@ class InternalAuthCodeSent extends AuthEvent {
 class InternalAuthError extends AuthEvent {
   final String message;
   InternalAuthError(this.message);
+}
+
+class HandleLoginSuccess extends AuthEvent {
+  final User user;
+  HandleLoginSuccess(this.user);
+  @override
+  List<Object?> get props => [user];
 }

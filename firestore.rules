@@ -1,32 +1,109 @@
 rules_version = '2';
 service cloud.firestore {
-  match /databases/{db}/documents {
-    
+  match /databases/{database}/documents {
+
+    function isAdmin() {
+      return request.auth != null && 
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'ADMIN';
+    }
+
+    // ─── Users ───────────────────────────────────────────────────────────────
     match /users/{uid} {
-      allow read: if request.auth.uid == uid;
-      allow write: if request.auth.uid == uid 
-        && !request.resource.data.keys()
-        .hasAny(['role','verified']);
+      // Allow any authenticated user to read profiles (for maps, handoffs, etc.)
+      allow read: if request.auth != null || isAdmin();
+
+      // Anyone can create their own user document (auth + onboarding)
+      // 'verified' can never be set by the client on creation
+      allow create: if request.auth != null
+        && request.auth.uid == uid
+        && !request.resource.data.keys().hasAny(['verified']);
+
+      // Updates allowed with these rules:
+      // 1. 'verified' can never be changed by client
+      // 2. 'role' can only be changed while onboardingComplete is false
+      //    (i.e. during onboarding — after that it is locked)
+      allow update: if request.auth != null
+        && request.auth.uid == uid
+        && !request.resource.data.diff(
+            resource.data).affectedKeys()
+            .hasAny(['verified'])
+        && (
+          resource.data.get('onboardingComplete', false) == false
+          || !request.resource.data.diff(
+              resource.data).affectedKeys()
+              .hasAny(['role'])
+        ) || isAdmin();
     }
-    
+
     match /listings/{listingId} {
-      allow read: if request.auth != null;
-      allow write: if false;
+      // Any authenticated user can read listings
+      allow read: if request.auth != null || isAdmin();
+
+      // Only growers can create listings directly
+      allow create: if request.auth != null
+        && request.auth.uid == request.resource.data.growerId;
+
+      // Producer can claim an OPEN listing by setting producerId
+      allow update: if request.auth != null
+        && resource.data.status == 'OPEN'
+        && resource.data.producerId == null
+        && request.resource.data.producerId == request.auth.uid
+        && request.resource.data.diff(resource.data)
+            .affectedKeys()
+            .hasOnly(['producerId', 'status', 'updatedAt', 'matchedAt'])
+        || isAdmin();
+
+      allow delete: if false;
     }
-    
+
+    // ─── Handoffs ─────────────────────────────────────────────────────────────
     match /handoffs/{handoffId} {
-      allow read: if request.auth.uid in [
-        resource.data.growerId,
-        resource.data.producerId,
-        resource.data.transporterId
-      ];
+      // Only the 3 parties on the handoff can read it
+      allow read: if isAdmin() ||
+        (request.auth != null && 
+        (request.auth.uid == resource.data.growerId
+        || request.auth.uid == resource.data.producerId
+        || request.auth.uid == resource.data.transporterId));
+
+      // Producer can raise a dispute — only disputeStatus field, only to RAISED
+      allow update: if (request.auth != null
+        && request.auth.uid == resource.data.producerId
+        && request.resource.data.diff(resource.data)
+            .affectedKeys().hasOnly(['disputeStatus', 'disputeReason', 'disputedAt'])
+        && request.resource.data.disputeStatus == 'RAISED') || isAdmin();
+
+      // All other writes are server-side only
+      allow create: if false;
+      allow delete: if false;
+    }
+
+    // ─── Agent Logs ───────────────────────────────────────────────────────────
+    match /agentLogs/{logId} {
+      // Grower can read their own agent logs
+      allow read: if isAdmin() ||
+        (request.auth != null && 
+        request.auth.uid == resource.data.growerId);
+
+      // Written by Cloud Function only
       allow write: if false;
     }
-    
-    match /agentLogs/{logId} {
-      allow read: if request.auth.uid == 
-        resource.data.growerId;
+
+    // ─── Disputes ─────────────────────────────────────────────────────────────
+    match /disputes/{disputeId} {
+      // Any authenticated user can read disputes
+      allow read: if request.auth != null || isAdmin();
+
+      // Written by Cloud Function only
       allow write: if false;
+    }
+
+    match /conversations/{docId} {
+      allow read, write: if false;
+    }
+
+    match /growerMemory/{docId} {
+      allow read, write: if false;
     }
   }
 }

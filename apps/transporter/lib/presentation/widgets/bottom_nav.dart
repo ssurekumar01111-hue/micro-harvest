@@ -11,10 +11,12 @@ class BottomNav extends StatelessWidget {
     int currentIndex = 0;
     if (location.startsWith('/dashboard')) {
       currentIndex = 0;
-    } else if (location.startsWith('/active')) {
+    } else if (location.startsWith('/hauls')) {
       currentIndex = 1;
     } else if (location.startsWith('/earnings')) {
       currentIndex = 2;
+    } else if (location.startsWith('/profile')) {
+      currentIndex = 3;
     }
 
     return BottomNavigationBar(
@@ -24,9 +26,11 @@ class BottomNav extends StatelessWidget {
         if (index == 0) {
           context.go('/dashboard');
         } else if (index == 1) {
-          context.go('/active');
+          context.go('/hauls');
         } else if (index == 2) {
           context.go('/earnings');
+        } else if (index == 3) {
+          context.go('/profile');
         }
       },
       items: const [

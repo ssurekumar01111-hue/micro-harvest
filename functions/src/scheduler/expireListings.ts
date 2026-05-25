@@ -1,4 +1,5 @@
 import * as functions from "firebase-functions/v2";
+import { logger } from "firebase-functions";
 import * as admin from "firebase-admin";
 import { ListingStatus } from "../../../packages/core/src/models";
 
@@ -21,7 +22,7 @@ export const expireListings = functions.scheduler.onSchedule({
     .where("harvestWindowEnd", "<", now.toDate());
 
   const snapshot = await expiredListingsQuery.get();
-  console.log(`Found ${snapshot.size} expired listings.`);
+  logger.log(`Found ${snapshot.size} expired listings.`);
 
   if (snapshot.empty) return;
 
@@ -54,5 +55,5 @@ export const expireListings = functions.scheduler.onSchedule({
   await batch.commit();
   await Promise.all(notificationPromises);
 
-  console.log(`Successfully expired ${snapshot.size} listings.`);
+  logger.log(`Successfully expired ${snapshot.size} listings.`);
 });

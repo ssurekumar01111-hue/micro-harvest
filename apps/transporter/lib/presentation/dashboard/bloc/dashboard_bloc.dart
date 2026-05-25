@@ -1,4 +1,6 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:rxdart/rxdart.dart';
+import '../../../../data/models/listing_model.dart';
 import '../../../../data/repositories/auth_repository.dart';
 import '../../../../data/repositories/haul_repository.dart';
 import 'dashboard_event.dart';
@@ -27,16 +29,32 @@ class DashboardBloc extends Bloc<DashboardEvent, DashboardState> {
         return;
       }
 
+      final activeStream = _haulRepository.getActiveHandoff(user.uid);
+      final pendingStream = _haulRepository.getIncomingHaulRequests(user.uid);
+      final statsStream = _haulRepository.getTransporterStats(user.uid);
+
       await emit.forEach(
-        _haulRepository.getActiveHandoff(user.uid),
-        onData: (activeHandoff) => DashboardLoaded(
-          user: user,
-          isAvailable: user.availabilityStatus == 'AVAILABLE',
-          activeHandoff: activeHandoff,
-          todayEarnings: 0.0, // Mock
-          totalHauls: 0, // Mock
-          rating: 5.0, // Mock
+        Rx.combineLatest3(
+          activeStream,
+          pendingStream,
+          statsStream,
+          (active, List<ListingModel> pending, Map<String, dynamic> stats) => (active, pending, stats),
         ),
+        onData: (data) {
+          final active = data.$1;
+          final pending = data.$2;
+          final stats = data.$3;
+
+          return DashboardLoaded(
+            user: user,
+            isAvailable: user.availabilityStatus == 'AVAILABLE',
+            activeHandoff: active,
+            pendingHauls: pending,
+            todayEarnings: stats['todayEarnings'] ?? 0.0,
+            totalHauls: stats['totalHauls'] ?? 0,
+            rating: 5.0,
+          );
+        },
       );
     } catch (e) {
       emit(DashboardError(e.toString()));

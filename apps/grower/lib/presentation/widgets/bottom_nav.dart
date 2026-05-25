@@ -15,10 +15,15 @@ class BottomNav extends StatelessWidget {
       currentIndex = 1;
     } else if (location.startsWith('/listings')) {
       currentIndex = 2;
+    } else if (location.startsWith('/earnings')) {
+      currentIndex = 3;
+    } else if (location.startsWith('/profile')) {
+      currentIndex = 4;
     }
 
     return BottomNavigationBar(
       currentIndex: currentIndex,
+      type: BottomNavigationBarType.fixed,
       onTap: (index) {
         if (index == 0) {
           context.go('/dashboard');
@@ -26,12 +31,18 @@ class BottomNav extends StatelessWidget {
           context.go('/agent');
         } else if (index == 2) {
           context.go('/listings');
+        } else if (index == 3) {
+          context.go('/earnings');
+        } else if (index == 4) {
+          context.go('/profile');
         }
       },
       items: const [
         BottomNavigationBarItem(icon: Icon(Icons.dashboard_outlined), label: 'Dashboard'),
         BottomNavigationBarItem(icon: Icon(Icons.smart_toy_outlined), label: 'AI Agent'),
         BottomNavigationBarItem(icon: Icon(Icons.list_alt_outlined), label: 'Listings'),
+        BottomNavigationBarItem(icon: Icon(Icons.payments_outlined), label: 'Earnings'),
+        BottomNavigationBarItem(icon: Icon(Icons.person_outline), label: 'Profile'),
       ],
     );
   }

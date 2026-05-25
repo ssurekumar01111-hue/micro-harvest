@@ -2,6 +2,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'core/theme/app_theme.dart';
 import 'data/repositories/auth_repository.dart';
 import 'data/repositories/haul_repository.dart';
@@ -11,14 +13,15 @@ import 'presentation/auth/bloc/auth_event.dart';
 import 'presentation/auth/bloc/auth_state.dart';
 import 'presentation/auth/screens/phone_otp_screen.dart';
 import 'presentation/auth/screens/otp_verify_screen.dart';
+import 'presentation/onboarding/onboarding_screen.dart';
 import 'presentation/dashboard/bloc/dashboard_bloc.dart';
-import 'presentation/dashboard/screens/dashboard_screen.dart';
 import 'presentation/haul/bloc/haul_bloc.dart';
 import 'presentation/haul/screens/haul_alert_screen.dart';
 import 'presentation/gate/bloc/gate_bloc.dart';
 import 'presentation/gate/screens/gate1_screen.dart';
 import 'presentation/gate/screens/gate2_screen.dart';
-import 'presentation/earnings/screens/earnings_screen.dart';
+import 'presentation/main/transporter_main_screen.dart';
+import 'data/models/listing_model.dart';
 
 class MicroHarvestTransporterApp extends StatelessWidget {
   const MicroHarvestTransporterApp({super.key});
@@ -55,7 +58,6 @@ class MicroHarvestTransporterApp extends StatelessWidget {
             create: (context) => GateBloc(
               haulRepository: context.read<HaulRepository>(),
               authRepository: context.read<AuthRepository>(),
-              locationRepository: context.read<LocationRepository>(),
             ),
           ),
         ],
@@ -84,12 +86,16 @@ class _AppViewState extends State<AppView> {
       redirect: (context, state) {
         final authState = context.read<AuthBloc>().state;
         final bool loggingIn = state.matchedLocation.startsWith('/auth');
+        final bool onboarding = state.matchedLocation == '/onboarding';
 
         if (authState is AuthUnauthenticated) {
           return loggingIn ? null : '/auth/phone';
         }
+        if (authState is AuthNewUser) {
+          return onboarding ? null : '/onboarding';
+        }
         if (authState is AuthAuthenticated) {
-          return loggingIn ? '/dashboard' : null;
+          return (loggingIn || onboarding) ? '/dashboard' : null;
         }
         return null;
       },
@@ -106,12 +112,35 @@ class _AppViewState extends State<AppView> {
           },
         ),
         GoRoute(
+          path: '/onboarding',
+          builder: (context, state) => const OnboardingScreen(),
+        ),
+        GoRoute(
           path: '/dashboard',
-          builder: (context, state) => const DashboardScreen(),
+          builder: (context, state) => const TransporterMainScreen(initialIndex: 0),
+        ),
+        GoRoute(
+          path: '/hauls',
+          builder: (context, state) => const TransporterMainScreen(initialIndex: 1),
+        ),
+        GoRoute(
+          path: '/earnings',
+          builder: (context, state) => const TransporterMainScreen(initialIndex: 2),
+        ),
+        GoRoute(
+          path: '/profile',
+          builder: (context, state) => const TransporterMainScreen(initialIndex: 3),
         ),
         GoRoute(
           path: '/haul/:id',
-          builder: (context, state) => HaulAlertScreen(listing: state.extra),
+          builder: (context, state) {
+            final id = state.pathParameters['id']!;
+            final extra = state.extra;
+            if (extra is ListingModel) {
+              return HaulAlertScreen(listing: extra);
+            }
+            return HaulAlertScreen(listing: id);
+          },
         ),
         GoRoute(
           path: '/gate1/:id',
@@ -121,12 +150,54 @@ class _AppViewState extends State<AppView> {
           path: '/gate2/:id',
           builder: (context, state) => Gate2Screen(handoffId: state.pathParameters['id']!),
         ),
-        GoRoute(
-          path: '/earnings',
-          builder: (context, state) => const EarningsScreen(),
-        ),
       ],
     );
+
+    _setupPermissions();
+  }
+
+  Future<void> _setupPermissions() async {
+    // 1. Notification Permission
+    await FirebaseMessaging.instance.requestPermission(
+      alert: true,
+      badge: true,
+      sound: true,
+    );
+
+    // Wait a moment for the notification dialog to resolve
+    await Future.delayed(const Duration(milliseconds: 500));
+
+    // 2. Location Permission (requested AFTER notification)
+    if (mounted) {
+      await context.read<LocationRepository>().requestPermission();
+    }
+
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid != null && mounted) {
+      context.read<AuthRepository>().saveFCMToken(uid);
+    }
+
+    // Foreground
+    FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+      final listingId = message.data['listingId'];
+      if (listingId != null) {
+        _router.push('/haul/$listingId');
+      }
+    });
+
+    // Background tap
+    FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
+      final listingId = message.data['listingId'];
+      if (listingId != null) {
+        _router.push('/haul/$listingId');
+      }
+    });
+
+    // Terminated state
+    final initial = await FirebaseMessaging.instance.getInitialMessage();
+    if (initial != null && initial.data['listingId'] != null) {
+      _router.push('/haul/${initial.data['listingId']}');
+    }
   }
 
   @override

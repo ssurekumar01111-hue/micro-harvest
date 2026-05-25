@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:geolocator/geolocator.dart';
 import '../../data/models/listing_model.dart';
+import '../../data/repositories/location_repository.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_text_styles.dart';
 import 'status_badge.dart';
@@ -13,14 +15,34 @@ class ListingCard extends StatelessWidget {
 
   String get _cropEmoji {
     switch (listing.cropType) {
-      case CropType.PINOT_NOIR:
-      case CropType.CABERNET:
-      case CropType.MERLOT:
+      case 'PINOT_NOIR':
+      case 'CABERNET':
+      case 'MERLOT':
         return '🍇';
-      case CropType.CHARDONNAY:
-      case CropType.SAUVIGNON_BLANC:
-      case CropType.RIESLING:
+      case 'CHARDONNAY':
+      case 'SAUVIGNON_BLANC':
+      case 'RIESLING':
         return '🥂';
+      case 'TOMATO':
+        return '🍅';
+      case 'POTATO':
+        return '🥔';
+      case 'ONION':
+        return '🧅';
+      case 'MANGO':
+        return '🥭';
+      case 'WHEAT':
+      case 'RICE':
+        return '🌾';
+      case 'SUGARCANE':
+        return '🎋';
+      case 'COTTON':
+        return '☁️';
+      case 'SOYBEAN':
+      case 'CHICKPEA':
+        return '🫘';
+      default:
+        return '🌱';
     }
   }
 
@@ -52,13 +74,32 @@ class ListingCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      '${listing.cropType.name.replaceAll('_', ' ')}',
-                      style: AppTextStyles.titleLarge.copyWith(fontSize: 18),
+                      ListingModel.cropDisplayName(listing.cropType),
+                      style: AppTextStyles.titleLarge,
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      '${listing.containerCount} ${listing.containerType.name.replaceAll('_', ' ')} • ${listing.weightKg}kg',
+                      '${listing.containerCount} ${ListingModel.containerDisplayName(listing.containerType)} • ${listing.weightKg}kg',
                       style: AppTextStyles.bodyMedium.copyWith(color: AppColors.stone),
+                    ),
+                    const SizedBox(height: 4),
+                    FutureBuilder<Position>(
+                      future: context.read<LocationRepository>().getCurrentPosition(),
+                      builder: (context, snapshot) {
+                        if (snapshot.hasData) {
+                          final distance = context.read<LocationRepository>().calculateDistance(
+                                snapshot.data!.latitude,
+                                snapshot.data!.longitude,
+                                listing.plotLocation.latitude,
+                                listing.plotLocation.longitude,
+                              );
+                          return Text(
+                            '${distance.toStringAsFixed(1)} mi away',
+                            style: AppTextStyles.bodyMedium.copyWith(color: AppColors.moss, fontWeight: FontWeight.w500),
+                          );
+                        }
+                        return const SizedBox.shrink();
+                      },
                     ),
                   ],
                 ),
@@ -68,9 +109,33 @@ class ListingCard extends StatelessWidget {
                 children: [
                   StatusBadge(status: listing.status),
                   const SizedBox(height: 8),
-                  Text(
-                    NumberFormat.currency(symbol: '\$').format(listing.askingPriceUSD),
-                    style: AppTextStyles.titleLarge.copyWith(fontSize: 16, color: AppColors.moss),
+                  Builder(
+                    builder: (context) {
+                      final pricePerTon = listing.askingPricePerTon ?? 0.0;
+                      final weightTons = listing.weightKg / 1000;
+                      final totalPrice = pricePerTon * weightTons;
+
+                      if (pricePerTon <= 0) {
+                        return Text(
+                          'Price TBD',
+                          style: AppTextStyles.titleLarge.copyWith(fontSize: 16, color: AppColors.stone),
+                        );
+                      }
+
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(
+                            '\$${totalPrice.toStringAsFixed(0)} total',
+                            style: AppTextStyles.titleLarge.copyWith(fontSize: 16, color: AppColors.moss),
+                          ),
+                          Text(
+                            '\$${pricePerTon.toStringAsFixed(0)}/ton',
+                            style: AppTextStyles.bodyMedium.copyWith(color: AppColors.stone, fontSize: 12),
+                          ),
+                        ],
+                      );
+                    },
                   ),
                 ],
               ),

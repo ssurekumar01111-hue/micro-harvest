@@ -28,7 +28,7 @@ class _PhoneOTPScreenState extends State<PhoneOTPScreen> {
       },
       child: Scaffold(
         body: SafeArea(
-          child: Padding(
+          child: SingleChildScrollView(
             padding: const EdgeInsets.all(24.0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,

@@ -9,6 +9,13 @@ abstract class HaulState extends Equatable {
 class HaulInitial extends HaulState {}
 class HaulLoading extends HaulState {}
 
+class HaulLoaded extends HaulState {
+  final ListingModel listing;
+  HaulLoaded(this.listing);
+  @override
+  List<Object?> get props => [listing];
+}
+
 class HaulAlertsLoaded extends HaulState {
   final List<ListingModel> hauls;
   HaulAlertsLoaded(this.hauls);

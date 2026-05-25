@@ -16,16 +16,38 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     on<SignOutRequested>(_onSignOutRequested);
     on<InternalAuthCodeSent>(_onInternalAuthCodeSent);
     on<InternalAuthError>(_onInternalAuthError);
+    on<HandleLoginSuccess>(_onHandleLoginSuccess);
   }
 
   Future<void> _onAppStarted(AppStarted event, Emitter<AuthState> emit) async {
+    final userStream = _authRepository.authStateChanges;
     await emit.forEach(
-      _authRepository.authStateChanges,
+      userStream,
       onData: (user) {
-        if (user != null) return AuthAuthenticated(user);
+        if (user != null) {
+          add(HandleLoginSuccess(user));
+          return state;
+        }
         return AuthUnauthenticated();
       },
     );
+  }
+
+  Future<void> _onHandleLoginSuccess(HandleLoginSuccess event, Emitter<AuthState> emit) async {
+    final user = event.user;
+    final userModel = await _authRepository.getUserFromFirestore(user.uid);
+    if (userModel == null) {
+      await _authRepository.saveUserToFirestore(user);
+    }
+
+    await _authRepository.saveFCMToken(user.uid);
+
+    final isRegistered = await _authRepository.isUserRegistered(user.uid);
+    if (isRegistered) {
+      emit(AuthAuthenticated(user));
+    } else {
+      emit(AuthNewUser(user));
+    }
   }
 
   Future<void> _onPhoneOTPRequested(PhoneOTPRequested event, Emitter<AuthState> emit) async {
@@ -48,9 +70,10 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
         verificationId: event.verificationId,
         smsCode: event.smsCode,
       );
-      if (userCredential.user != null) {
-        await _authRepository.saveUserToFirestore(userCredential.user!);
-        emit(AuthAuthenticated(userCredential.user!));
+      final user = userCredential.user;
+      if (user != null) {
+        await _authRepository.saveUserToFirestore(user);
+        add(HandleLoginSuccess(user));
       }
     } catch (e) {
       emit(AuthError(e.toString()));
@@ -61,9 +84,10 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     emit(AuthLoading());
     try {
       final userCredential = await _authRepository.signInWithGoogle();
-      if (userCredential?.user != null) {
-        await _authRepository.saveUserToFirestore(userCredential!.user!);
-        emit(AuthAuthenticated(userCredential.user!));
+      final user = userCredential?.user;
+      if (user != null) {
+        await _authRepository.saveUserToFirestore(user);
+        add(HandleLoginSuccess(user));
       } else {
         emit(AuthUnauthenticated());
       }

@@ -1,20 +1,31 @@
+# Environment
+**/.env.json
+**/.env
+**/.env.local
+functions/.env*
+!**/.env.example.json
+!functions/.env.example
+
 # Firebase
 **/google-services.json
 **/GoogleService-Info.plist
-**/firebase_options.dart
-functions/.env
-**/.env
-**/.env.local
+**/firebase-adminsdk*.json
+
+# Build artifacts
+**/build/
+releases/
+*.apk
+*.aab
+*.ipa
 
 # Flutter
 **/.dart_tool/
-**/build/
-**/*.g.dart
-**/*.freezed.dart
-**/pubspec.lock
+**/.flutter-plugins
+**/.flutter-plugins-dependencies
+**/flutter_export_environment.sh
 
 # Node
-**/node_modules/
+functions/node_modules/
 functions/lib/
 
 # IDE

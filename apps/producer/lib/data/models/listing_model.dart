@@ -1,19 +1,18 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-enum CropType { PINOT_NOIR, CHARDONNAY, RIESLING, CABERNET, MERLOT, SAUVIGNON_BLANC }
-enum ContainerType { MACRO_BIN, HALF_BIN, LUG_BOX, BULK_BAG }
 enum PerishTier { HOURS_12, HOURS_24, DAYS_3, DAYS_7 }
 enum ListingStatus { OPEN, MATCHED, LOCKED, IN_TRANSIT, DELIVERED, SETTLED, EXPIRED, DISPUTED }
 
 class ListingModel {
   final String listingId;
   final String growerId;
-  final CropType cropType;
-  final ContainerType containerType;
+  final String cropType;
+  final String containerType;
   final int containerCount;
   final double weightKg;
   final PerishTier perishTier;
   final double askingPriceUSD;
+  final double? askingPricePerTon;
   final GeoPoint plotLocation;
   final String geohash;
   final DateTime harvestWindowEnd;
@@ -34,6 +33,7 @@ class ListingModel {
     required this.weightKg,
     required this.perishTier,
     required this.askingPriceUSD,
+    this.askingPricePerTon,
     required this.plotLocation,
     required this.geohash,
     required this.harvestWindowEnd,
@@ -46,39 +46,134 @@ class ListingModel {
     this.matchedAt,
   });
 
-  factory ListingModel.fromFirestore(DocumentSnapshot doc) {
-    final data = doc.data() as Map<String, dynamic>;
+  static const List<String> cropTypes = [
+    'PINOT_NOIR',
+    'MERLOT',
+    'CABERNET',
+    'CHARDONNAY',
+    'RIESLING',
+    'SAUVIGNON_BLANC',
+    'TOMATO',
+    'POTATO',
+    'ONION',
+    'MANGO',
+    'WHEAT',
+    'RICE',
+    'SUGARCANE',
+    'COTTON',
+    'SOYBEAN',
+    'CHICKPEA',
+  ];
+
+  static const List<String> containerTypes = [
+    'MACRO_BIN',
+    'HALF_BIN',
+    'LUG_BOX',
+    'BULK_BAG',
+    'CRATE',
+    'SACK',
+    'QUINTAL',
+    'TROLLEY',
+  ];
+
+  static String cropDisplayName(String? cropType) {
+    const map = {
+      'PINOT_NOIR': 'Pinot Noir',
+      'MERLOT': 'Merlot',
+      'CABERNET': 'Cabernet',
+      'CHARDONNAY': 'Chardonnay',
+      'RIESLING': 'Riesling',
+      'SAUVIGNON_BLANC': 'Sauvignon Blanc',
+      'TOMATO': 'Tomato',
+      'POTATO': 'Potato',
+      'ONION': 'Onion',
+      'MANGO': 'Mango',
+      'WHEAT': 'Wheat',
+      'RICE': 'Rice',
+      'SUGARCANE': 'Sugarcane',
+      'COTTON': 'Cotton',
+      'SOYBEAN': 'Soybean',
+      'CHICKPEA': 'Chickpea',
+    };
+    return map[cropType] ?? cropType ?? 'Unknown';
+  }
+
+  static String containerDisplayName(String? type) {
+    const map = {
+      'MACRO_BIN': 'Macro Bin',
+      'HALF_BIN': 'Half Bin',
+      'LUG_BOX': 'Lug Box',
+      'BULK_BAG': 'Bulk Bag',
+      'CRATE': 'Crate',
+      'SACK': 'Sack',
+      'QUINTAL': 'Quintal',
+      'TROLLEY': 'Trolley',
+    };
+    return map[type] ?? type ?? 'Unknown';
+  }
+
+  factory ListingModel.fromMap(Map<String, dynamic> data, String id) {
     return ListingModel(
-      listingId: doc.id,
+      listingId: id,
       growerId: data['growerId'] ?? '',
-      cropType: CropType.values.firstWhere((e) => e.name == data['cropType']),
-      containerType: ContainerType.values.firstWhere((e) => e.name == data['containerType']),
+      cropType: data['cropType'] ?? 'UNKNOWN',
+      containerType: data['containerType'] ?? 'UNKNOWN',
       containerCount: data['containerCount'] ?? 0,
       weightKg: (data['weightKg'] ?? 0).toDouble(),
-      perishTier: PerishTier.values.firstWhere((e) => e.name == data['perishTier']),
+      perishTier: PerishTier.values.firstWhere(
+        (e) => e.name == data['perishTier'],
+        orElse: () => PerishTier.HOURS_12,
+      ),
       askingPriceUSD: (data['askingPriceUSD'] ?? 0).toDouble(),
-      plotLocation: data['plotLocation'] ?? const GeoPoint(0, 0),
+      askingPricePerTon: (data['askingPricePerTon'] ?? data['askingPriceUSD'])?.toDouble(),
+      plotLocation: _parseGeoPoint(data['plotLocation'] ?? data['location']),
       geohash: data['geohash'] ?? '',
-      harvestWindowEnd: (data['harvestWindowEnd'] as Timestamp?)?.toDate() ?? DateTime.now(),
-      status: ListingStatus.values.firstWhere((e) => e.name == data['status']),
+      harvestWindowEnd: _parseDateTime(data['harvestWindowEnd']),
+      status: ListingStatus.values.firstWhere(
+        (e) => e.name == data['status'],
+        orElse: () => ListingStatus.OPEN,
+      ),
       producerId: data['producerId'],
       transporterId: data['transporterId'],
       listingSource: data['listingSource'] ?? 'MANUAL',
-      createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
-      updatedAt: (data['updatedAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
-      matchedAt: (data['matchedAt'] as Timestamp?)?.toDate(),
+      createdAt: _parseDateTime(data['createdAt']),
+      updatedAt: _parseDateTime(data['updatedAt']),
+      matchedAt: data['matchedAt'] != null ? _parseDateTime(data['matchedAt']) : null,
     );
+  }
+
+  static GeoPoint _parseGeoPoint(dynamic data) {
+    if (data is GeoPoint) return data;
+    if (data is Map) {
+      return GeoPoint(
+        (data['lat'] ?? data['latitude'] ?? 0).toDouble(),
+        (data['lon'] ?? data['longitude'] ?? 0).toDouble(),
+      );
+    }
+    return const GeoPoint(0, 0);
+  }
+
+  static DateTime _parseDateTime(dynamic data) {
+    if (data is Timestamp) return data.toDate();
+    if (data is String) return DateTime.parse(data);
+    if (data is int) return DateTime.fromMillisecondsSinceEpoch(data);
+    return DateTime.now();
+  }
+
+  factory ListingModel.fromFirestore(DocumentSnapshot doc) {
+    return ListingModel.fromMap(doc.data() as Map<String, dynamic>, doc.id);
   }
 
   Map<String, dynamic> toMap() {
     return {
       'growerId': growerId,
-      'cropType': cropType.name,
-      'containerType': containerType.name,
+      'cropType': cropType,
+      'containerType': containerType,
       'containerCount': containerCount,
       'weightKg': weightKg,
       'perishTier': perishTier.name,
       'askingPriceUSD': askingPriceUSD,
+      'askingPricePerTon': askingPricePerTon,
       'plotLocation': plotLocation,
       'geohash': geohash,
       'harvestWindowEnd': Timestamp.fromDate(harvestWindowEnd),

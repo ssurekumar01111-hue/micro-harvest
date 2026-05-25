@@ -1,6 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import '../models/user_model.dart';
 
 class AuthRepository {
@@ -55,22 +56,47 @@ class AuthRepository {
     await _auth.signOut();
   }
 
+  Future<bool> isUserRegistered(String uid) async {
+    final doc = await _firestore.collection('users').doc(uid).get();
+    return doc.exists && (doc.data()?['onboardingComplete'] ?? false) == true;
+  }
+
+  Future<void> saveFCMToken(String uid) async {
+    String? token = await FirebaseMessaging.instance.getToken();
+    if (token != null) {
+      await _firestore.collection('users').doc(uid).set({
+        'fcmTokens': FieldValue.arrayUnion([token]),
+        'lastSeenAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    }
+    FirebaseMessaging.instance.onTokenRefresh.listen((newToken) async {
+      await _firestore.collection('users').doc(uid).set({
+        'fcmTokens': FieldValue.arrayUnion([newToken]),
+        'lastSeenAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    });
+  }
+
+  Future<UserModel?> getUserFromFirestore(String uid) async {
+    final doc = await _firestore.collection('users').doc(uid).get();
+    if (doc.exists) {
+      return UserModel.fromFirestore(doc);
+    }
+    return null;
+  }
+
   Future<void> saveUserToFirestore(User user) async {
     final doc = await _firestore.collection('users').doc(user.uid).get();
     if (!doc.exists) {
-      final userModel = UserModel(
-        uid: user.uid,
-        role: UserRole.PRODUCER,
-        displayName: user.displayName ?? '',
-        phone: user.phoneNumber ?? '',
-        geoPoint: const GeoPoint(0, 0),
-        geohash: '',
-        radiusMiles: 50,
-        verified: false,
-        createdAt: DateTime.now(),
-        fcmTokens: [],
-      );
-      await _firestore.collection('users').doc(user.uid).set(userModel.toMap());
+      await _firestore.collection('users').doc(user.uid).set({
+        'uid': user.uid,
+        'role': 'PRODUCER',
+        'displayName': user.displayName ?? '',
+        'phone': user.phoneNumber ?? '',
+        'email': user.email ?? '',
+        'createdAt': FieldValue.serverTimestamp(),
+        'onboardingComplete': false,
+      });
     }
   }
 

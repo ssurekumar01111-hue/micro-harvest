@@ -25,7 +25,7 @@ class _OTPVerifyScreenState extends State<OTPVerifyScreen> {
       },
       child: Scaffold(
         appBar: AppBar(title: const Text('Verify OTP')),
-        body: Padding(
+        body: SingleChildScrollView(
           padding: const EdgeInsets.all(24.0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,

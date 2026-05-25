@@ -11,14 +11,34 @@ class ListingCard extends StatelessWidget {
 
   String get _cropEmoji {
     switch (listing.cropType) {
-      case CropType.PINOT_NOIR:
-      case CropType.CABERNET:
-      case CropType.MERLOT:
+      case 'PINOT_NOIR':
+      case 'CABERNET':
+      case 'MERLOT':
         return '🍇';
-      case CropType.CHARDONNAY:
-      case CropType.SAUVIGNON_BLANC:
-      case CropType.RIESLING:
+      case 'CHARDONNAY':
+      case 'SAUVIGNON_BLANC':
+      case 'RIESLING':
         return '🥂';
+      case 'TOMATO':
+        return '🍅';
+      case 'POTATO':
+        return '🥔';
+      case 'ONION':
+        return '🧅';
+      case 'MANGO':
+        return '🥭';
+      case 'WHEAT':
+      case 'RICE':
+        return '🌾';
+      case 'SUGARCANE':
+        return '🎋';
+      case 'COTTON':
+        return '☁️';
+      case 'SOYBEAN':
+      case 'CHICKPEA':
+        return '🫘';
+      default:
+        return '🌱';
     }
   }
 
@@ -50,7 +70,7 @@ class ListingCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      listing.cropType.name.replaceAll('_', ' '),
+                      ListingModel.cropDisplayName(listing.cropType),
                       style: AppTextStyles.titleLarge.copyWith(fontSize: 18),
                     ),
                     const SizedBox(height: 4),
@@ -73,9 +93,36 @@ class ListingCard extends StatelessWidget {
                     child: const Text('URGENT', style: TextStyle(color: AppColors.rust, fontSize: 10, fontWeight: FontWeight.bold)),
                   ),
                   const SizedBox(height: 8),
-                  Text(
-                    '\$${(listing.askingPriceUSD / (listing.weightKg / 1000)).toStringAsFixed(0)}/t',
-                    style: AppTextStyles.titleLarge.copyWith(fontSize: 16, color: AppColors.moss),
+                  Builder(
+                    builder: (context) {
+                      final pricePerTon = (listing.askingPricePerTon != null && listing.askingPricePerTon! > 0)
+                          ? listing.askingPricePerTon!
+                          : (listing.weightKg > 0 ? listing.askingPriceUSD / (listing.weightKg / 1000) : 0.0);
+
+                      final weightTons = listing.weightKg / 1000;
+                      final totalPrice = pricePerTon * weightTons;
+
+                      if (pricePerTon <= 0) {
+                        return Text(
+                          'Price TBD',
+                          style: AppTextStyles.titleLarge.copyWith(fontSize: 16, color: AppColors.stone),
+                        );
+                      }
+
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(
+                            '\$${totalPrice.toStringAsFixed(0)} total',
+                            style: AppTextStyles.titleLarge.copyWith(fontSize: 16, color: AppColors.moss),
+                          ),
+                          Text(
+                            '\$${pricePerTon.toStringAsFixed(0)}/ton',
+                            style: AppTextStyles.bodyMedium.copyWith(color: AppColors.stone, fontSize: 12),
+                          ),
+                        ],
+                      );
+                    },
                   ),
                 ],
               ),

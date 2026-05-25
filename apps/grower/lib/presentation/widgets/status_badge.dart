@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import '../../data/models/listing_model.dart';
-import '../../core/constants/app_colors.dart';
 
 class StatusBadge extends StatelessWidget {
   final ListingStatus status;
@@ -10,29 +9,29 @@ class StatusBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     Color color;
     switch (status) {
-      case ListingStatus.OPEN:
-        color = AppColors.moss;
+      case ListingStatus.open:
+        color = Colors.blue;
         break;
-      case ListingStatus.MATCHED:
-        color = AppColors.wheat;
+      case ListingStatus.matched:
+        color = Colors.orange;
         break;
-      case ListingStatus.LOCKED:
-        color = AppColors.rust;
+      case ListingStatus.locked:
+        color = Colors.purple;
         break;
-      case ListingStatus.IN_TRANSIT:
-        color = AppColors.harvest;
+      case ListingStatus.inTransit:
+        color = Colors.amber;
         break;
-      case ListingStatus.DELIVERED:
-        color = AppColors.moss2;
+      case ListingStatus.delivered:
+        color = Colors.teal;
         break;
-      case ListingStatus.SETTLED:
-        color = AppColors.soil;
+      case ListingStatus.settled:
+        color = Colors.green;
         break;
-      case ListingStatus.EXPIRED:
-        color = AppColors.stone;
+      case ListingStatus.expired:
+        color = Colors.grey;
         break;
-      case ListingStatus.DISPUTED:
-        color = AppColors.rust;
+      case ListingStatus.disputed:
+        color = Colors.red;
         break;
     }
 
@@ -43,7 +42,7 @@ class StatusBadge extends StatelessWidget {
         borderRadius: BorderRadius.circular(8),
       ),
       child: Text(
-        status.name,
+        status == ListingStatus.settled ? 'COMPLETED' : status.name.toUpperCase(),
         style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
       ),
     );

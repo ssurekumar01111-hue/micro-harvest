@@ -4,9 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import '../../onboarding/onboarding_screen.dart';
 import '../../../data/repositories/auth_repository.dart';
 import '../../../data/models/user_model.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../widgets/bottom_nav.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -20,132 +22,213 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget build(BuildContext context) {
     final uid = FirebaseAuth.instance.currentUser?.uid;
 
-    return Scaffold(
-      backgroundColor: AppColors.cream,
-      appBar: AppBar(
-        title: const Text('Profile'),
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        context.go('/dashboard');
+      },
+      child: Scaffold(
         backgroundColor: AppColors.cream,
-        elevation: 0,
-      ),
-      body: StreamBuilder<DocumentSnapshot>(
-        stream: FirebaseFirestore.instance.collection('users').doc(uid).snapshots(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (snapshot.hasError || !snapshot.hasData || !snapshot.data!.exists) {
-            return const Center(child: Text('Error loading profile or profile not found'));
-          }
+        bottomNavigationBar: const BottomNav(),
+        appBar: AppBar(
+          title: const Text('Profile'),
+          backgroundColor: AppColors.cream,
+          elevation: 0,
+        ),
+        body: StreamBuilder<DocumentSnapshot>(
+          stream: FirebaseFirestore.instance.collection('users').doc(uid).snapshots(),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            if (snapshot.hasError || !snapshot.hasData || !snapshot.data!.exists) {
+              return const Center(child: Text('Error loading profile or profile not found'));
+            }
 
-          final user = UserModel.fromFirestore(snapshot.data!);
-          final initial = user.displayName.isNotEmpty
-              ? user.displayName.substring(0, 1).toUpperCase()
-              : '?';
+            final user = UserModel.fromFirestore(snapshot.data!);
+            final initial = user.displayName.isNotEmpty
+                ? user.displayName.substring(0, 1).toUpperCase()
+                : '?';
 
-          return SingleChildScrollView(
-            padding: const EdgeInsets.all(24.0),
-            child: Column(
-              children: [
-                // Header
-                CircleAvatar(
-                  radius: 40,
-                  backgroundColor: AppColors.moss,
-                  child: Text(
-                    initial,
-                    style: const TextStyle(
-                      fontSize: 32,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  user.displayName.isEmpty ? 'Unknown User' : user.displayName,
-                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                        fontFamily: 'Playfair Display',
+            return SingleChildScrollView(
+              padding: const EdgeInsets.all(24.0),
+              child: Column(
+                children: [
+                  // Header
+                  Row(
+                    children: [
+                      user.profileImageUrl != null
+                          ? CircleAvatar(
+                              radius: 40,
+                              backgroundImage: NetworkImage(user.profileImageUrl!),
+                            )
+                          : CircleAvatar(
+                              radius: 40,
+                              backgroundColor: AppColors.moss,
+                              child: Text(
+                                initial,
+                                style: const TextStyle(
+                                  fontSize: 32,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              user.displayName.isEmpty ? 'Unknown User' : user.displayName,
+                              style: Theme.of(context).textTheme.headlineSmall,
+                            ),
+                            if (user.farmName != null && user.farmName!.isNotEmpty)
+                              Text(
+                                user.farmName!,
+                                style: const TextStyle(color: AppColors.stone),
+                              ),
+                            Text(
+                              user.phone,
+                              style: const TextStyle(color: AppColors.stone, fontSize: 12),
+                            ),
+                          ],
+                        ),
                       ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  user.phone,
-                  style: const TextStyle(color: AppColors.stone),
-                ),
-                const SizedBox(height: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: AppColors.moss.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(16),
+                      IconButton(
+                        icon: const Icon(Icons.edit, color: AppColors.moss),
+                        onPressed: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (context) => OnboardingScreen(initialUser: user),
+                            ),
+                          );
+                        },
+                      ),
+                    ],
                   ),
-                  child: Text(
-                    user.role.name,
-                    style: const TextStyle(
-                      color: AppColors.moss,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 12,
+                  const SizedBox(height: 32),
+
+                  // Stats Row
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceAround,
+                    children: [
+                      _buildStatColumn('Earned', '\$${user.totalEarned.toStringAsFixed(0)}'),
+                      _buildStatColumn('Hauled', '${user.totalHauled}'),
+                      _buildStatColumn('Active', 'AVAILABLE'),
+                    ],
+                  ),
+                  const SizedBox(height: 32),
+
+                  // Location Card
+                  _buildCard(
+                    context,
+                    title: 'Farm Location',
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(Icons.location_on, color: AppColors.moss, size: 20),
+                          const SizedBox(width: 8),
+                          Text(
+                            "Lat: ${user.geoPoint.latitude.toStringAsFixed(2)}, Lng: ${user.geoPoint.longitude.toStringAsFixed(2)}",
+                            style: const TextStyle(color: AppColors.bark),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        "Alert radius: ${user.radiusMiles.toInt()} miles",
+                        style: const TextStyle(color: AppColors.stone, fontSize: 12),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Crops Card
+                  _buildCard(
+                    context,
+                    title: 'Crop Interests',
+                    children: [
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 4,
+                        children: user.cropInterests.map((crop) {
+                          return Chip(
+                            label: Text(crop, style: const TextStyle(fontSize: 12)),
+                            backgroundColor: AppColors.moss.withValues(alpha: 0.1),
+                            side: BorderSide.none,
+                            padding: EdgeInsets.zero,
+                            visualDensity: VisualDensity.compact,
+                          );
+                        }).toList(),
+                      ),
+                      if (user.harvestSize != null) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          "Typical harvest: ${user.harvestSize}",
+                          style: const TextStyle(color: AppColors.stone, fontSize: 12),
+                        ),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Account Info Card
+                  _buildCard(
+                    context,
+                    title: 'Account Info',
+                    children: [
+                      _buildInfoRow('Member Since', DateFormat.yMMMd().format(user.createdAt)),
+                      _buildInfoRow('Verification Status', user.verified ? 'Verified' : 'Pending'),
+                    ],
+                  ),
+                  const SizedBox(height: 32),
+
+                  // App Settings Card
+                  _buildCard(
+                    context,
+                    title: 'App Settings',
+                    children: [
+                      SwitchListTile(
+                        title: const Text('Notifications'),
+                        value: true, // Placeholder for SharedPreferences
+                        onChanged: (val) {},
+                        contentPadding: EdgeInsets.zero,
+                        activeThumbColor: AppColors.moss,
+                      ),
+                      SwitchListTile(
+                        title: const Text('Dark Mode'),
+                        value: false, // Placeholder
+                        onChanged: (val) {},
+                        contentPadding: EdgeInsets.zero,
+                        activeThumbColor: AppColors.moss,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 32),
+
+                  // Sign Out Button
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.red[700],
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                      ),
+                      onPressed: () async {
+                        await context.read<AuthRepository>().signOut();
+                        if (context.mounted) {
+                          context.go('/auth/phone');
+                        }
+                      },
+                      child: const Text('Sign Out', style: TextStyle(color: Colors.white)),
                     ),
                   ),
-                ),
-                const SizedBox(height: 32),
-
-                // Account Info Card
-                _buildCard(
-                  context,
-                  title: 'Account Info',
-                  children: [
-                    _buildInfoRow('Phone', user.phone),
-                    _buildInfoRow(
-                      'Member Since',
-                      DateFormat.yMMMd().format(user.createdAt),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-
-                // App Settings Card
-                _buildCard(
-                  context,
-                  title: 'App Settings',
-                  children: [
-                    SwitchListTile(
-                      title: const Text('Notifications'),
-                      value: true, // Placeholder for SharedPreferences
-                      onChanged: (val) {},
-                      contentPadding: EdgeInsets.zero,
-                      activeColor: AppColors.moss,
-                    ),
-                    SwitchListTile(
-                      title: const Text('Dark Mode'),
-                      value: false, // Placeholder
-                      onChanged: (val) {},
-                      contentPadding: EdgeInsets.zero,
-                      activeColor: AppColors.moss,
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 32),
-
-                // Sign Out Button
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.red[700],
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                    ),
-                    onPressed: () async {
-                      await context.read<AuthRepository>().signOut();
-                      if (context.mounted) {
-                        context.go('/auth/phone');
-                      }
-                    },
-                    child: const Text('Sign Out', style: TextStyle(color: Colors.white)),
-                  ),
-                ),
-              ],
-            ),
-          );
-        },
+                ],
+              ),
+            );
+          },
+        ),
       ),
     );
   }
@@ -159,7 +242,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withValues(alpha: 0.05),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -192,6 +275,28 @@ class _ProfileScreenState extends State<ProfileScreen> {
           Text(value, style: const TextStyle(fontWeight: FontWeight.w500)),
         ],
       ),
+    );
+  }
+
+  Widget _buildStatColumn(String label, String value) {
+    return Column(
+      children: [
+        Text(
+          value,
+          style: const TextStyle(
+            fontWeight: FontWeight.bold,
+            fontSize: 18,
+            color: AppColors.moss,
+          ),
+        ),
+        Text(
+          label,
+          style: const TextStyle(
+            color: AppColors.stone,
+            fontSize: 12,
+          ),
+        ),
+      ],
     );
   }
 }

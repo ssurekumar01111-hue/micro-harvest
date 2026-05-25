@@ -12,7 +12,6 @@ class DiscoveryBloc extends Bloc<DiscoveryEvent, DiscoveryState> {
   final AuthRepository _authRepository;
 
   GeoPoint? _lastLocation;
-  double? _lastRadius;
   String? _activeFilter;
 
   DiscoveryBloc({
@@ -30,7 +29,6 @@ class DiscoveryBloc extends Bloc<DiscoveryEvent, DiscoveryState> {
 
   Future<void> _onLoadDiscovery(LoadDiscovery event, Emitter<DiscoveryState> emit) async {
     _lastLocation = event.location;
-    _lastRadius = event.radius;
     await _subscribeToListings(emit);
   }
 
@@ -43,18 +41,15 @@ class DiscoveryBloc extends Bloc<DiscoveryEvent, DiscoveryState> {
     if (_lastLocation == null) return;
     emit(DiscoveryLoading());
     try {
-      await emit.forEach(
-        _discoveryRepository.getNearbyListings(
-          producerLocation: _lastLocation!,
-          radiusMiles: _lastRadius ?? 50,
-          cropTypeFilter: _activeFilter,
-        ),
-        onData: (listings) => DiscoveryLoaded(
-          listings: listings,
-          producerLocation: _lastLocation!,
-          activeFilter: _activeFilter,
-        ),
+      final listings = await _discoveryRepository.getNearbyListings(
+        _lastLocation!.latitude,
+        _lastLocation!.longitude,
       );
+      emit(DiscoveryLoaded(
+        listings: listings,
+        producerLocation: _lastLocation!,
+        activeFilter: _activeFilter,
+      ));
     } catch (e) {
       emit(DiscoveryError(e.toString()));
     }

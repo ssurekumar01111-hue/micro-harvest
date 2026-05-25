@@ -14,6 +14,14 @@ class AcceptHaul extends HaulEvent {
   List<Object?> get props => [listingId];
 }
 class DeclineHaul extends HaulEvent {}
+
+class FetchHaulDetails extends HaulEvent {
+  final String listingId;
+  FetchHaulDetails(this.listingId);
+  @override
+  List<Object?> get props => [listingId];
+}
+
 class HaulAlertReceived extends HaulEvent {
   final ListingModel listing;
   HaulAlertReceived(this.listing);

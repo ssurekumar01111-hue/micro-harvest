@@ -1,11 +1,13 @@
-import 'dart:convert';
 import 'dart:io';
+import 'package:crypto/crypto.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 
 class HandoffRepository {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseFunctions _functions = FirebaseFunctions.instanceFor(region: 'asia-south1');
+  final FirebaseStorage _storage = FirebaseStorage.instance;
 
   Future<void> claimListing(String listingId, String producerId) async {
     await _firestore.collection('listings').doc(listingId).update({
@@ -21,7 +23,12 @@ class HandoffRepository {
     required File image,
   }) async {
     final bytes = await image.readAsBytes();
-    final base64Image = base64Encode(bytes);
+    final imageHash = sha256.convert(bytes).toString();
+
+    // Upload to Storage
+    final ref = _storage.ref().child('handoffs/$handoffId/gate2.jpg');
+    await ref.putFile(image, SettableMetadata(contentType: 'image/jpeg'));
+    final imageUrl = await ref.getDownloadURL();
 
     final callable = _functions.httpsCallable('onGate2Confirm');
     await callable.call({
@@ -31,7 +38,8 @@ class HandoffRepository {
         'latitude': gps.latitude,
         'longitude': gps.longitude,
       },
-      'imageBase64': base64Image,
+      'imageUrl': imageUrl,
+      'imageHash': imageHash,
     });
   }
 

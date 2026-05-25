@@ -1,4 +1,5 @@
 import 'package:equatable/equatable.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 abstract class AuthEvent extends Equatable {
   @override
@@ -6,22 +7,36 @@ abstract class AuthEvent extends Equatable {
 }
 
 class AppStarted extends AuthEvent {}
+
 class PhoneOTPRequested extends AuthEvent {
   final String phoneNumber;
   PhoneOTPRequested(this.phoneNumber);
 }
+
 class OTPVerified extends AuthEvent {
   final String verificationId;
   final String smsCode;
   OTPVerified(this.verificationId, this.smsCode);
 }
+
 class GoogleSignInRequested extends AuthEvent {}
+
 class SignOutRequested extends AuthEvent {}
+
 class InternalAuthCodeSent extends AuthEvent {
   final String verificationId;
   InternalAuthCodeSent(this.verificationId);
 }
+
 class InternalAuthError extends AuthEvent {
   final String message;
   InternalAuthError(this.message);
 }
+
+class HandleLoginSuccess extends AuthEvent {
+  final User user;
+  HandleLoginSuccess(this.user);
+  @override
+  List<Object?> get props => [user];
+}
+

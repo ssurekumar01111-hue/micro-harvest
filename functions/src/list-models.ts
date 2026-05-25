@@ -1,4 +1,5 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { logger } from "firebase-functions";
 import * as dotenv from "dotenv";
 import * as path from "path";
 
@@ -10,17 +11,18 @@ async function listModels() {
   const models = [
     "gemini-3.1-flash-lite",
     "gemini-2.5-flash-lite",
-    "gemini-2.0-flash",
-    "gemini-1.5-flash"
+    "gemini-2.5-flash",
+    "gemini-2.5-pro",
+    "gemini-3.1-pro-preview"
   ];
 
   for (const modelName of models) {
     try {
       const model = genAI.getGenerativeModel({ model: modelName });
       const result = await model.generateContent("test");
-      console.log(`✅ ${modelName} works: ${result.response.text().substring(0, 20)}...`);
+      logger.log(`✅ ${modelName} works: ${result.response.text().substring(0, 20)}...`);
     } catch (e: any) {
-      console.log(`❌ ${modelName} fails: ${e.message}`);
+      logger.log(`❌ ${modelName} fails: ${e.message}`);
     }
   }
 }

@@ -1,4 +1,5 @@
 import 'package:equatable/equatable.dart';
+import '../../../../data/models/payment_summary.dart';
 
 abstract class ConfirmState extends Equatable {
   @override
@@ -10,9 +11,12 @@ class ConfirmLoading extends ConfirmState {}
 
 class ConfirmLoaded extends ConfirmState {
   final List<Map<String, dynamic>> handoffs;
-  ConfirmLoaded(this.handoffs);
+  final Map<String, PaymentSummary> paymentSummaries;
+  
+  ConfirmLoaded(this.handoffs, {this.paymentSummaries = const {}});
+  
   @override
-  List<Object?> get props => [handoffs];
+  List<Object?> get props => [handoffs, paymentSummaries];
 }
 
 class ConfirmGate2Success extends ConfirmState {}

@@ -1,7 +1,6 @@
 import 'package:equatable/equatable.dart';
 import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import '../../../../data/models/handoff_model.dart';
 
 abstract class GateEvent extends Equatable {
   @override
@@ -26,9 +25,10 @@ class ConfirmGate1 extends GateEvent {
 
 class ConfirmGate2 extends GateEvent {
   final String handoffId;
+  final String producerId;
   final GeoPoint gps;
   final File image;
-  ConfirmGate2({required this.handoffId, required this.gps, required this.image});
+  ConfirmGate2({required this.handoffId, required this.producerId, required this.gps, required this.image});
   @override
-  List<Object?> get props => [handoffId, gps, image];
+  List<Object?> get props => [handoffId, producerId, gps, image];
 }
