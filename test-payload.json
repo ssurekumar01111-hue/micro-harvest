@@ -1,8 +1,0 @@
-{
-  "data": {
-    "rawInput": "I have 30 MACRO_BINs of Pinot Noir ready, total weight 3000kg. Needs to move within 24 hours.",
-    "growerId": "test-grower-001",
-    "plotLocation": { "latitude": 38.5449, "longitude": -121.7405 },
-    "harvestWindowEnd": "2026-05-20T18:00:00Z"
-  }
-}

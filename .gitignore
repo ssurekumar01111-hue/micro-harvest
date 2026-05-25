@@ -32,3 +32,8 @@ functions/lib/
 .idea/
 .vscode/
 *.iml
+
+env.json
+PHASE_1_EVOLUTION_PLAN.md
+test-payload.json
+indexes
