@@ -130,7 +130,7 @@ export class IntelligenceService {
       RIESLING: 'HIGH',
     };
 
-    const cropRisk = cropPerishability[data.cropType] || "HIGH";
+    const cropRisk = cropPerishability[(data.cropType || "").toUpperCase()] || "HIGH";
 
     return {
       urgencyScore: Math.min(urgencyScore, 100),
