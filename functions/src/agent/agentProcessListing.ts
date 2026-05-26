@@ -5,6 +5,8 @@ import { SchemaType } from "@google/generative-ai";
 import * as dotenv from "dotenv";
 import { IntelligenceService } from "./intelligence";
 import { generateWithFallback, generateWithFallbackFull } from "../utils/geminiWithFallback";
+import { listMcpTools } from "../utils/elasticMcpClient";
+import { queryMicroHarvestAgent } from "../utils/agentPlatformClient";
 
 dotenv.config();
 
@@ -26,6 +28,15 @@ export const agentProcessListing = functions.https.onCall({
 }, async (request) => {
   const db = admin.firestore();
   const { rawInput, growerId, plotLocation } = request.data as AgentProcessInput;
+
+  // Log MCP tools available at startup
+  try {
+    const mcpTools = await listMcpTools();
+    console.log("[MCP] Agent Builder tools available:", 
+      mcpTools.tools?.length || 0);
+  } catch (e) {
+    console.warn("[MCP] Could not list tools:", e);
+  }
 
   if (!rawInput || !growerId || !plotLocation) {
     throw new functions.https.HttpsError("invalid-argument", "Missing required fields");
@@ -206,6 +217,28 @@ Return ONLY this JSON, no extra text:
     const intelligence = await IntelligenceService.analyzeListing(extractedData, plotLocation, growerId);
     const rankedTransporters = await IntelligenceService.rankTransporters(extractedData, plotLocation, intelligence.recommendedRadiusKm);
 
+    // Query Google Cloud Agent Platform agent
+    let agentPlatformResponse = "";
+    let agentPlatformToolCalls = 0;
+    let mcpTransportersFound = 0;
+    try {
+      const agentResult = await queryMicroHarvestAgent({
+        cropType: extractedData.cropType,
+        weightKg: extractedData.weightKg,
+        perishTier: extractedData.perishTier,
+        latitude: plotLocation.latitude,
+        longitude: plotLocation.longitude,
+        listingId: `${growerId}_${Date.now()}`, // Temporary listing ID for agent context
+      });
+
+      agentPlatformResponse = agentResult.responseText;
+      agentPlatformToolCalls = agentResult.toolCallsExecuted;
+      mcpTransportersFound = agentResult.mcpTransporters.length;
+      console.log("[ADK] Agent Platform integration successful");
+    } catch (adkError) {
+      console.warn("[ADK] Agent Platform query failed, continuing:", adkError);
+    }
+
     const summaryPrompt = "You are a calm, professional agricultural logistics coordinator.\nGenerate a concise operational summary of this listing and the reasoning behind its parameters.\n\nData: " + JSON.stringify(extractedData) + "\nReasoning Factors: " + intelligence.decisionFactors.join(", ") + "\n\nFocus on the logistics and risks. Keep it under 3 sentences.";
 
     const summaryText = await generateWithFallback(apiKey, summaryPrompt);
@@ -215,6 +248,9 @@ Return ONLY this JSON, no extra text:
       rawInput,
       intelligence,
       matchedTransporterIds: rankedTransporters.map(t => t.uid),
+      agentPlatformResponse,
+      agentPlatformToolCalls,
+      mcpTransportersFound,
       createdAt: new Date(),
     });
 

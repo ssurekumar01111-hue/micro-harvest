@@ -1,6 +1,7 @@
 import * as admin from "firebase-admin";
 import { logger } from "firebase-functions";
 import { Client } from "@elastic/elasticsearch";
+import { callMcpTool } from "../utils/elasticMcpClient";
 
 const getDb = () => {
   if (admin.apps.length === 0) {
@@ -147,6 +148,46 @@ export class IntelligenceService {
     plotLocation: { latitude: number; longitude: number },
     radiusKm: number = 100
   ): Promise<any[]> {
+    
+    // Try MCP first
+    try {
+      console.log("[MCP] Calling find_nearby_transporters via MCP (nlQuery format)");
+      const mcpResult = await callMcpTool(
+        "find_nearby_transporters",
+        {
+          nlQuery: `Find available transporters within ${radiusKm}km of latitude ${plotLocation.latitude}, longitude ${plotLocation.longitude}`
+        }
+      );
+      
+      console.log("[MCP] find_nearby_transporters result:", 
+        JSON.stringify(mcpResult).substring(0, 200));
+      
+      // Parse MCP result — it returns content array
+      const content = mcpResult?.content || [];
+      const textContent = content.find((c: any) => c.type === "text");
+      if (textContent?.text) {
+        try {
+          const parsed = JSON.parse(textContent.text);
+          // If MCP returned results use them
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            console.log(`[MCP] Found ${parsed.length} transporters via MCP`);
+            return parsed.map((t: any) => ({
+              ...t,
+              totalScore: 100,
+              reasoning: ["Matched via Elastic Agent Builder MCP"]
+            }));
+          }
+        } catch (parseError) {
+          console.warn("[MCP] Could not parse result, falling back to direct ES");
+        }
+      }
+    } catch (mcpError) {
+      console.warn("[MCP] MCP call failed, falling back to direct ES:", 
+        mcpError);
+    }
+
+    // Fallback to direct ES client
+    console.log("[ES Direct] Falling back to direct Elasticsearch query");
     const esClient = getEsClient();
     try {
       const esResult = await esClient.search({

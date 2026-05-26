@@ -36,3 +36,4 @@ export { expireListings } from "./scheduler/expireListings";
 // Elastic
 export { getElasticStats } from "./elastic/getElasticStats";
 export { producerSearch } from "./search/producerSearch";
+export { mcpProxy } from "./mcpProxy";
