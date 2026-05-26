@@ -9,7 +9,9 @@ class MicroHarvestEngine:
     def set_up(self):
         """Called by Vertex AI on worker initialization."""
         import os
-        os.environ["GOOGLE_API_KEY"] = os.environ.get("GEMINI_API_KEY", "[REMOVED]")
+        os.environ["GOOGLE_API_KEY"] = os.environ.get("GEMINI_API_KEY")
+        if not os.environ["GOOGLE_API_KEY"]:
+            raise ValueError("GEMINI_API_KEY environment variable is not set.")
         
         from google.adk.agents import LlmAgent
         from google.adk.tools.mcp_tool.mcp_toolset import McpToolset
