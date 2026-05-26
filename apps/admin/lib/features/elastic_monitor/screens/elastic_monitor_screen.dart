@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 
 import 'package:admin/core/constants/app_colors.dart';
 import 'package:admin/features/elastic_monitor/bloc/elastic_monitor_bloc.dart';
+import 'package:admin/features/elastic_monitor/models/elastic_listing.dart';
 
 class ElasticMonitorScreen extends StatefulWidget {
   const ElasticMonitorScreen({super.key});
@@ -168,8 +169,8 @@ class _ElasticMonitorScreenState extends State<ElasticMonitorScreen> {
                                                 RunTestSearch(
                                                   query: _queryController.text,
                                                   radius: _radius,
-                                                  latitude: 12.9716, // Default Bangalore
-                                                  longitude: 77.5946,
+                                                  latitude: 25.485, // Banda
+                                                  longitude: 80.343,
                                                 ),
                                               );
                                         },
@@ -185,7 +186,7 @@ class _ElasticMonitorScreenState extends State<ElasticMonitorScreen> {
                                   style: GoogleFonts.dmSans(fontWeight: FontWeight.bold, color: AppColors.stone),
                                 ),
                                 const SizedBox(height: 16),
-                                ...state.searchResults.map((result) => _buildResultCard(result)),
+                                ...state.searchResults.map((result) => _buildResultCard(result as ElasticListing)),
                               ],
                             ],
                           ),
@@ -216,8 +217,7 @@ class _ElasticMonitorScreenState extends State<ElasticMonitorScreen> {
     );
   }
 
-  Widget _buildResultCard(dynamic result) {
-    final data = result['_source'] as Map<String, dynamic>;
+  Widget _buildResultCard(ElasticListing listing) {
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       color: AppColors.cream.withValues(alpha: 0.5),
@@ -230,11 +230,11 @@ class _ElasticMonitorScreenState extends State<ElasticMonitorScreen> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  data['cropType']?.toString().toUpperCase() ?? 'UNKNOWN',
+                  listing.cropType.toUpperCase(),
                   style: GoogleFonts.dmSans(fontWeight: FontWeight.bold, color: AppColors.moss),
                 ),
                 Text(
-                  '${data['weightKg']} kg',
+                  '${listing.weightKg.toStringAsFixed(0)} kg',
                   style: GoogleFonts.dmSans(fontWeight: FontWeight.bold),
                 ),
               ],
@@ -243,13 +243,13 @@ class _ElasticMonitorScreenState extends State<ElasticMonitorScreen> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text('Urgency: ${data['urgency']}', style: GoogleFonts.dmSans(fontSize: 12)),
-                Text('\$${data['pricePerTon']}/ton', style: GoogleFonts.dmSans(fontSize: 12)),
+                Text('Urgency: ${listing.urgency}', style: GoogleFonts.dmSans(fontSize: 12)),
+                Text('\$${listing.askingPricePerTon.toStringAsFixed(0)}/ton', style: GoogleFonts.dmSans(fontSize: 12)),
               ],
             ),
             const SizedBox(height: 4),
             Text(
-              'Distance: ${result['sort']?[0]?.toStringAsFixed(1) ?? 'N/A'} miles',
+              'Location: ${listing.location['lat']}, ${listing.location['lon']}',
               style: GoogleFonts.dmSans(fontSize: 12, color: AppColors.stone),
             ),
           ],

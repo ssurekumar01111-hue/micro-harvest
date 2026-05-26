@@ -81,7 +81,7 @@ export const agentProcessListing = functions.firestore.onDocumentCreated({
 
       agentPlatformResponse = agentResult.responseText;
       agentPlatformToolCalls = agentResult.toolCallsExecuted;
-      mcpTransportersFound = agentResult.mcpTransporters.length;
+      mcpTransportersFound = agentResult.mcpTransportersFound;
       console.log("[ADK] Agent Platform integration successful");
     } catch (adkError) {
       console.warn("[ADK] Agent Platform query failed, continuing:", adkError);

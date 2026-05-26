@@ -1,6 +1,7 @@
 import 'package:bloc/bloc.dart';
 import 'package:equatable/equatable.dart';
 import 'package:cloud_functions/cloud_functions.dart';
+import '../models/elastic_listing.dart';
 
 part 'elastic_monitor_event.dart';
 part 'elastic_monitor_state.dart';
@@ -48,16 +49,20 @@ class ElasticMonitorBloc extends Bloc<ElasticMonitorEvent, ElasticMonitorState> 
     try {
       final HttpsCallable callable = _functions.httpsCallable('searchListings');
       final result = await callable.call({
-        'query': event.query,
-        'radius': event.radius,
+        'cropType': event.query.isEmpty ? null : event.query.toUpperCase(),
+        'radiusMiles': event.radius,
         'lat': event.latitude,
-        'lng': event.longitude,
+        'lon': event.longitude,
       });
 
       final data = result.data as Map<String, dynamic>;
-      final searchResults = data['hits'] ?? [];
-      final searchTimeMs = data['responseTimeMs'] ?? 0;
-      final totalResults = data['totalResults'] ?? 0;
+      final rawHits = data['hits'] as List<dynamic>? ?? [];
+      final searchResults = rawHits
+          .map((hit) => ElasticListing.fromJson(Map<String, dynamic>.from(hit)))
+          .toList();
+
+      final searchTimeMs = 0; // Backend doesn't return responseTimeMs yet
+      final totalResults = searchResults.length;
 
       emit(currentState.copyWith(
         isSearching: false,

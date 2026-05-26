@@ -1,5 +1,8 @@
-import { callMcpTool } from "./elasticMcpClient";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleAuth } from "google-auth-library";
+
+const auth = new GoogleAuth({
+  scopes: ["https://www.googleapis.com/auth/cloud-platform"],
+});
 
 export async function queryMicroHarvestAgent(listingData: {
   cropType: string;
@@ -11,80 +14,77 @@ export async function queryMicroHarvestAgent(listingData: {
 }): Promise<{
   responseText: string;
   toolCallsExecuted: number;
-  mcpTransporters: any[];
+  mcpTransportersFound: number;
 }> {
-  let toolCallsExecuted = 0;
-  let mcpTransporters: any[] = [];
-
-  // STEP 1 — Call Elastic MCP tool directly (already working)
-  try {
-    console.log("[ADK] Calling find_nearby_transporters via Elastic MCP");
-    const mcpResult = await callMcpTool(
-      "find_nearby_transporters",
-      {
-        nlQuery: `Find available transporters within 100km of latitude ${listingData.latitude}, longitude ${listingData.longitude} for ${listingData.cropType} delivery`
-      }
-    );
-
-    const content = mcpResult?.content || [];
-    const textContent = content.find((c: any) => c.type === "text");
-    if (textContent?.text) {
-      try {
-        const parsed = JSON.parse(textContent.text);
-        mcpTransporters = Array.isArray(parsed) ? parsed : [];
-      } catch {
-        console.log("[ADK] MCP returned text:", 
-          textContent.text.substring(0, 100));
-      }
-    }
-    toolCallsExecuted++;
-    console.log(`[ADK] MCP tool executed. Transporters found: ${mcpTransporters.length}`);
-  } catch (mcpError) {
-    console.warn("[ADK] MCP tool call failed:", mcpError);
+  const endpoint = process.env.AGENT_ENDPOINT || "";
+  if (!endpoint) {
+    throw new Error("AGENT_ENDPOINT not configured");
   }
 
-  // STEP 2 — Use Gemini to generate logistics recommendation
+  const message = `Analyze this agricultural listing and find nearby transporters:
+Listing ID: ${listingData.listingId}
+Crop: ${listingData.cropType}
+Weight: ${listingData.weightKg}kg
+Perishability Tier: ${listingData.perishTier}
+Location: ${listingData.latitude}, ${listingData.longitude}
+Radius: 100km
+Find available transporters and return logistics recommendation.`;
+
   try {
-    const genAI = new GoogleGenerativeAI(
-      process.env.GEMINI_API_KEY || ""
-    );
-    const model = genAI.getGenerativeModel({ 
-      model: "gemini-2.5-flash-lite" 
+    // Use Application Default Credentials (works automatically in Cloud Functions)
+    const client = await auth.getClient();
+    const token = await client.getAccessToken();
+
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${token.token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        input: {
+          message,
+          user_id: listingData.listingId,
+          session_id: listingData.listingId,
+        }
+      }),
     });
 
-    const prompt = `You are a logistics intelligence agent for Micro-Harvest agricultural marketplace.
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Reasoning Engine error ${response.status}: ${errorText}`);
+    }
 
-Listing Details:
-- Crop: ${listingData.cropType}
-- Weight: ${listingData.weightKg}kg  
-- Perishability Tier: ${listingData.perishTier}
-- Location: ${listingData.latitude}, ${listingData.longitude}
+    const result = await response.json() as any;
+    console.log("[Agent Builder] Response received:", 
+      JSON.stringify(result).substring(0, 200));
 
-Transporters found via Elastic MCP geo-search: ${mcpTransporters.length}
-MCP Results: ${JSON.stringify(mcpTransporters).substring(0, 500)}
+    // Reasoning Engine with custom class returns { output: { response, tool_calls, ... } }
+    const output = result.output || {};
+    const responseText = output.response || "";
+    const toolCalls = output.tool_calls || 0;
 
-Provide a structured logistics recommendation:
-1. weatherRisk (LOW/MEDIUM/HIGH)
-2. perishabilityRisk (LOW/MEDIUM/HIGH) 
-3. recommendedVehicle (REFRIGERATED/FLATBED/STANDARD)
-4. urgencyBoost (0-20 points)
-5. reasoning (2-3 sentences)
+    // Count transporters mentioned in response
+    let mcpTransportersFound = 0;
+    try {
+      const parsed = JSON.parse(
+        responseText.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim()
+      );
+      mcpTransportersFound = parsed.matchedTransporterIds?.length || 0;
+    } catch {
+      mcpTransportersFound = 0;
+    }
 
-Keep response concise and structured.`;
+    console.log(`[Agent Builder] Tool calls: ${toolCalls}`);
+    console.log(`[Agent Builder] Transporters found: ${mcpTransportersFound}`);
 
-    const result = await model.generateContent(prompt);
-    const responseText = result.response.text();
-
-    console.log(`[ADK] Gemini logistics recommendation generated`);
-    console.log(`[ADK] Tool calls executed: ${toolCallsExecuted}`);
-
-    return { responseText, toolCallsExecuted, mcpTransporters };
-  } catch (geminiError) {
-    console.warn("[ADK] Gemini recommendation failed:", geminiError);
-    return { 
-      responseText: "", 
-      toolCallsExecuted, 
-      mcpTransporters 
+    return {
+      responseText,
+      toolCallsExecuted: Number(toolCalls),
+      mcpTransportersFound,
     };
+  } catch (error) {
+    console.error("[Agent Builder] Query failed:", error);
+    throw error;
   }
 }

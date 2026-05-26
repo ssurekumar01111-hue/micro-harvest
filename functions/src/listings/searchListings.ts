@@ -59,8 +59,8 @@ export const searchListings = functions.https.onCall({
         id: hit._id,
         cropType: source.cropType,
         weightKg: source.weightKg,
-        urgency: source.perishTier,
-        askingPricePerTon: source.askingPriceUSD,
+        urgency: source.urgency, // Corrected to use source.urgency
+        askingPricePerTon: source.askingPricePerTon, // Corrected to use source.askingPricePerTon
         location: source.location,
         growerId: source.growerId,
         createdAt: source.createdAt,
