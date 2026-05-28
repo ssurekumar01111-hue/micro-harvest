@@ -9,12 +9,6 @@ import { queryMicroHarvestAgent } from "../utils/agentPlatformClient";
 
 dotenv.config();
 
-const apiKey = process.env.GEMINI_API_KEY || "";
-
-if (!process.env.GEMINI_API_KEY) {
-  logger.error("FATAL: GEMINI_API_KEY is not set");
-}
-
 /**
  * Triggered automatically when a new listing is created in Firestore.
  * Performs logistics intelligence and manages Agent Platform integration.
@@ -88,13 +82,52 @@ export const agentProcessListing = functions.firestore.onDocumentCreated({
     }
 
     // Phase 4: Generate Operational Summary
-    const summaryPrompt = "You are a calm, professional agricultural logistics coordinator.\nGenerate a concise operational summary of this listing and the reasoning behind its parameters.\n\nData: " + JSON.stringify(extractedData) + "\nReasoning Factors: " + intelligence.decisionFactors.join(", ") + "\n\nFocus on the logistics and risks. Keep it under 3 sentences.";
+    // Parse agentPlatformResponse JSON
+    let parsedAgent: any = {};
+    try {
+      parsedAgent = typeof agentPlatformResponse === "string"
+        ? JSON.parse(agentPlatformResponse)
+        : agentPlatformResponse;
+    } catch {
+      parsedAgent = {};
+    }
 
-    const summaryText = await generateWithFallback(apiKey, summaryPrompt);
+    // Build unified intelligence object — new field names, backward compatible
+    const unifiedIntelligence = {
+      // NEW fields (from Agent Platform)
+      weatherRisk: parsedAgent.weatherRisk || intelligence.weatherRisk || "MEDIUM",
+      perishabilityRisk: parsedAgent.perishabilityRisk || intelligence.perishabilityRisk || "MEDIUM",
+      recommendedVehicle: parsedAgent.recommendedVehicle || intelligence.recommendedTransportType || "STANDARD",
+      urgencyBoost: parsedAgent.urgencyBoost ?? intelligence.urgencyScore ?? 0,
+      reasoning: parsedAgent.reasoning || intelligence.decisionFactors?.join(". ") || "",
+      matchedTransporterIds: parsedAgent.matchedTransporterIds || rankedTransporters.map(t => t.uid) || [],
+
+      // BACKWARD COMPAT fields (so Flutter apps keep working during migration)
+      urgencyScore: parsedAgent.urgencyBoost ?? intelligence.urgencyScore ?? 0,
+      decisionFactors: parsedAgent.reasoning
+        ? [parsedAgent.reasoning]
+        : (intelligence.decisionFactors || []),
+      recommendedTransportType: parsedAgent.recommendedVehicle || intelligence.recommendedTransportType || "STANDARD",
+
+      // NEW tracking field
+      elasticIndexed: true,
+      processedAt: new Date().toISOString(),
+      agentModel: "gemini-2.5-flash",
+      historicalPriceAvg: intelligence?.historicalPriceAvg ?? null,
+      recommendedRadiusKm: intelligence.recommendedRadiusKm,
+    };
+
+    const summaryReasoning = parsedAgent.reasoning
+      || intelligence.decisionFactors?.join(", ")
+      || "Logistics assessment complete";
+
+    const summaryPrompt = "You are a calm, professional agricultural logistics coordinator.\nGenerate a concise operational summary of this listing and the reasoning behind its parameters.\n\nData: " + JSON.stringify(extractedData) + "\nReasoning Factors: " + summaryReasoning + "\n\nFocus on the logistics and risks. Keep it under 3 sentences.";
+
+    const summaryText = await generateWithFallback(summaryPrompt);
 
     // Update the listing with intelligence and summary
     await snap.ref.update({
-      intelligence,
+      intelligence: unifiedIntelligence,
       operationalSummary: summaryText,
       agentPlatformResponse,
       updatedAt: admin.firestore.FieldValue.serverTimestamp()
@@ -105,7 +138,7 @@ export const agentProcessListing = functions.firestore.onDocumentCreated({
       listingId,
       growerId,
       rawInput: data.rawInput || "CREATED_VIA_APP",
-      intelligence,
+      intelligence: unifiedIntelligence,
       matchedTransporterIds: rankedTransporters.map(t => t.uid),
       agentPlatformResponse,
       agentPlatformToolCalls,

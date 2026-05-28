@@ -5,7 +5,6 @@ import { IntelligenceService } from "./intelligence";
 import { generateWithFallback } from "../utils/geminiWithFallback";
 
 dotenv.config();
-const apiKey = process.env.GEMINI_API_KEY || "";
 
 function stripMarkdown(text: string): string {
   return text
@@ -90,7 +89,7 @@ CONTAINER TYPE RULES:
 - quintal / quintals → QUINTAL (100kg each)
 - trolley / trolleys → TROLLEY (1000kg each)`;
 
-  const responseText = await generateWithFallback(apiKey, extractionPrompt);
+  const responseText = await generateWithFallback(extractionPrompt);
   const jsonMatch = responseText.match(/\{[\s\S]*\}/);
   const geminiOutput = jsonMatch ? JSON.parse(jsonMatch[0]) : {};
 

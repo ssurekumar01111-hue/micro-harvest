@@ -26,12 +26,23 @@ export interface WeatherData {
 }
 
 export interface IntelligenceResult {
-  urgencyScore: number; // 0-100
+  // New fields
   weatherRisk: "LOW" | "MEDIUM" | "HIGH";
   perishabilityRisk: "LOW" | "MEDIUM" | "HIGH";
-  recommendedRadiusKm: number;
-  recommendedTransportType: string;
+  recommendedVehicle: "REFRIGERATED" | "FLATBED" | "STANDARD";
+  urgencyBoost: number;
+  reasoning: string;
+  matchedTransporterIds: string[];
+  elasticIndexed: boolean;
+  processedAt: string;
+  agentModel: string;
+
+  // Backward compat fields
+  urgencyScore: number;
   decisionFactors: string[];
+  recommendedTransportType: string;
+  
+  recommendedRadiusKm: number;
   historicalPriceAvg?: number;
 }
 
@@ -134,12 +145,19 @@ export class IntelligenceService {
 
     return {
       urgencyScore: Math.min(urgencyScore, 100),
+      urgencyBoost: Math.min(urgencyScore, 100),
       weatherRisk: weather.rainfallProb > 0.6 ? "HIGH" : "LOW",
       perishabilityRisk: data.perishTier.startsWith("HOURS") || cropRisk === "HIGH" ? "HIGH" : (cropRisk === "MEDIUM" ? "MEDIUM" : "LOW"),
       recommendedRadiusKm: urgencyScore > 70 ? 150 : 100,
       recommendedTransportType: data.perishTier === "HOURS_12" || cropRisk === "HIGH" ? "REFRIGERATED" : "STANDARD",
+      recommendedVehicle: data.perishTier === "HOURS_12" || cropRisk === "HIGH" ? "REFRIGERATED" : "STANDARD",
       decisionFactors: factors,
-      historicalPriceAvg: avgPrice
+      reasoning: factors.join(". "),
+      matchedTransporterIds: [],
+      elasticIndexed: false,
+      processedAt: new Date().toISOString(),
+      agentModel: "gemini-2.5-flash",
+      historicalPriceAvg: avgPrice ?? null
     };
   }
 

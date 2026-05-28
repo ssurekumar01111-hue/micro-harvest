@@ -1,31 +1,29 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { VertexAI } from "@google-cloud/vertexai";
 import { logger } from "firebase-functions";
 
+const vertexAI = new VertexAI({ project: "micro-harvest", location: "asia-south1" });
+
 const FALLBACK_MODELS = [
-  "gemini-3.1-flash-lite",
-  "gemini-2.5-flash-lite", 
   "gemini-2.5-flash",
-  "gemini-2.5-pro",
-  "gemini-3.1-pro-preview",
 ];
 
 export async function generateWithFallback(
-  apiKey: string,
   prompt: string,
   tools?: any[]
 ): Promise<string> {
-  const genAI = new GoogleGenerativeAI(apiKey);
-  
   for (const modelName of FALLBACK_MODELS) {
     try {
       const modelConfig: any = { model: modelName };
       if (tools) modelConfig.tools = tools;
       
-      const model = genAI.getGenerativeModel(modelConfig);
+      const model = vertexAI.getGenerativeModel(modelConfig);
       const result = await model.generateContent(prompt);
       
-      logger.log(`[Gemini] Success with model: ${modelName}`);
-      return result.response.text();
+      const response = result.response;
+      const text = response.candidates?.[0]?.content?.parts?.[0]?.text || "";
+      
+      logger.log(`[VertexAI] Success with model: ${modelName}`);
+      return text;
       
     } catch (error: any) {
       const isRetryable = 
@@ -39,35 +37,30 @@ export async function generateWithFallback(
         error?.message?.includes('quota');
         
       if (isRetryable) {
-        logger.warn(`[Gemini] ${modelName} unavailable, trying next...`);
+        logger.warn(`[VertexAI] ${modelName} unavailable, trying next...`);
         continue;
       }
       
-      // Non-retryable error - throw immediately
       throw error;
     }
   }
   
-  throw new Error('All Gemini models unavailable. Please try again.');
+  throw new Error('All Vertex AI Gemini models unavailable. Please try again.');
 }
 
-// For tool-calling (returns full response not just text)
 export async function generateWithFallbackFull(
-  apiKey: string,
   prompt: string,
   tools?: any[]
 ): Promise<any> {
-  const genAI = new GoogleGenerativeAI(apiKey);
-  
   for (const modelName of FALLBACK_MODELS) {
     try {
       const modelConfig: any = { model: modelName };
       if (tools) modelConfig.tools = tools;
       
-      const model = genAI.getGenerativeModel(modelConfig);
+      const model = vertexAI.getGenerativeModel(modelConfig);
       const result = await model.generateContent(prompt);
       
-      logger.log(`[Gemini] Success with model: ${modelName}`);
+      logger.log(`[VertexAI] Success with model: ${modelName}`);
       return result;
       
     } catch (error: any) {
@@ -82,12 +75,12 @@ export async function generateWithFallbackFull(
         error?.message?.includes('quota');
         
       if (isRetryable) {
-        logger.warn(`[Gemini] ${modelName} unavailable, trying next...`);
+        logger.warn(`[VertexAI] ${modelName} unavailable, trying next...`);
         continue;
       }
       throw error;
     }
   }
   
-  throw new Error('All Gemini models unavailable.');
+  throw new Error('All Vertex AI Gemini models unavailable.');
 }

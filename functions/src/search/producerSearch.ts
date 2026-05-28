@@ -34,8 +34,6 @@ export const producerSearch = functions.https.onCall(
       );
     }
 
-    const apiKey = process.env.GEMINI_API_KEY || "";
-
     // Step 1: Gemini extracts search params
     const extractionPrompt = `
 You are a produce marketplace search assistant.
@@ -86,7 +84,6 @@ CROP TYPE MAP:
 `;
 
     const responseText = await generateWithFallback(
-      apiKey, 
       extractionPrompt
     );
     

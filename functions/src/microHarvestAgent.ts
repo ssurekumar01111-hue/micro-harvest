@@ -1,3 +1,4 @@
+/*
 import { LlmAgent } from "@google/adk";
 import { McpToolset, StreamableHTTPConnectionParams } from "@google/adk/tools/mcp_tool";
 
@@ -9,7 +10,7 @@ const mcpToolset = new McpToolset({
 
 export const rootAgent = new LlmAgent({
   name: "micro_harvest",
-  model: "gemini-2.0-flash",
+  model: "gemini-2.5-flash",
   description: "Micro-Harvest agricultural logistics intelligence agent",
   instruction: `You are the Micro-Harvest logistics intelligence agent. When given a crop listing:
 1. Identify crop type, weight, and perishability tier
@@ -20,3 +21,4 @@ export const rootAgent = new LlmAgent({
 6. Use FLATBED for SUGARCANE and WHEAT`,
   tools: [mcpToolset],
 });
+*/

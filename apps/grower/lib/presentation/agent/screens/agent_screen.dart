@@ -695,8 +695,23 @@ class _AgentScreenState extends State<AgentScreen> {
   }
 
   Widget _buildReasoningCard(Map<String, dynamic> reasoning) {
-    final urgency = (reasoning['urgencyScore'] ?? 0) as int;
-    final factors = List<String>.from(reasoning['decisionFactors'] ?? []);
+    final urgency = (reasoning['urgencyBoost'] ?? reasoning['urgencyScore'] ?? 0) as int;
+    
+    List<String> factors = [];
+    final rawReasoning = reasoning['reasoning'];
+    final rawFactors = reasoning['decisionFactors'];
+
+    if (rawReasoning != null && rawReasoning is String) {
+      factors = [rawReasoning];
+    } else if (rawFactors != null && rawFactors is List) {
+      factors = List<String>.from(rawFactors);
+    } else if (rawFactors != null && rawFactors is String) {
+      factors = [rawFactors];
+    }
+
+    final vehicle = reasoning['recommendedVehicle'] 
+      ?? reasoning['recommendedTransportType'] 
+      ?? 'STANDARD';
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -762,7 +777,8 @@ class _AgentScreenState extends State<AgentScreen> {
             children: [
               _buildReasoningStat('Weather Risk', reasoning['weatherRisk'] ?? 'LOW'),
               _buildReasoningStat('Perishability', reasoning['perishabilityRisk'] ?? 'LOW'),
-              _buildReasoningStat('Radius', '${reasoning['recommendedRadiusKm']}km'),
+              _buildReasoningStat('Vehicle', vehicle),
+              _buildReasoningStat('Radius', '${reasoning['recommendedRadiusKm'] ?? 100}km'),
             ],
           ),
         ],

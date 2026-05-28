@@ -1,41 +1,54 @@
-# Environment
-**/.env.json
-**/.env
-**/.env.local
-functions/.env*
-!**/.env.example.json
-!functions/.env.example
+# Environment files
+.env
+.env.json
+.env.local
+.env.production
+.env.*.local
 
 # Firebase
+.firebase/
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
 **/google-services.json
 **/GoogleService-Info.plist
 **/firebase-adminsdk*.json
 
-# Build artifacts
-**/build/
-releases/
-*.apk
-*.aab
-*.ipa
+# Node
+node_modules/
+npm-debug.log
 
 # Flutter
+**/android/app/google-services.json
+**/ios/Runner/GoogleService-Info.plist
+**/build/
 **/.dart_tool/
 **/.flutter-plugins
 **/.flutter-plugins-dependencies
-**/flutter_export_environment.sh
+**/pubspec.lock
 
-# Node
-functions/node_modules/
-functions/lib/
+# Keys and secrets
+*.keystore
+*.jks
+google-services.json
+GoogleService-Info.plist
+service-account*.json
+*-service-account.json
 
 # IDE
 .idea/
 .vscode/
 *.iml
 
+# Build artifacts
+releases/
+*.apk
+*.aab
+*.ipa
+
+# App specific
 env.json
 PHASE_1_EVOLUTION_PLAN.md
 test-payload.json
 indexes
-
 functions/deploy_agent.py
