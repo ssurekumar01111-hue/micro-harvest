@@ -1,7 +1,11 @@
 import vertexai
 from vertexai.preview import reasoning_engines
 
-vertexai.init(project="168460245545", location="us-west1")
+import os
+from dotenv import load_dotenv
+load_dotenv("functions/.env")
+
+vertexai.init(project=os.getenv("AGENT_PROJECT_NUMBER"), location="us-west1")
 
 class MicroHarvestAgent:
     def query(self, message: str, **kwargs):

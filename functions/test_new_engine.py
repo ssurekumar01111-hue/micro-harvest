@@ -5,7 +5,12 @@ import json
 def get_token():
     return subprocess.check_output(["gcloud", "auth", "print-access-token"], shell=True).decode("utf-8").strip()
 
-url = "https://us-west1-aiplatform.googleapis.com/v1/projects/168460245545/locations/us-west1/reasoningEngines/7750563017309290496:query"
+import os
+from dotenv import load_dotenv
+load_dotenv("functions/.env")
+
+PROJECT_NUMBER = os.getenv("AGENT_PROJECT_NUMBER")
+url = f"https://us-west1-aiplatform.googleapis.com/v1/projects/{PROJECT_NUMBER}/locations/us-west1/reasoningEngines/7750563017309290496:query"
 token = get_token()
 
 headers = {

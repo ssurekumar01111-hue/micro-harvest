@@ -5,10 +5,15 @@ import subprocess
 def get_token():
     return subprocess.check_output(["gcloud", "auth", "print-access-token"], shell=True).decode("utf-8").strip()
 
-vertexai.init(project="168460245545", location="us-west1")
+import os
+from dotenv import load_dotenv
+load_dotenv("functions/.env")
+
+PROJECT_NUMBER = os.getenv("AGENT_PROJECT_NUMBER")
+vertexai.init(project=PROJECT_NUMBER, location="us-west1")
 
 engine_id = "7750563017309290496"
-resource_name = f"projects/168460245545/locations/us-west1/reasoningEngines/{engine_id}"
+resource_name = f"projects/{PROJECT_NUMBER}/locations/us-west1/reasoningEngines/{engine_id}"
 
 print(f"Testing engine: {resource_name}")
 

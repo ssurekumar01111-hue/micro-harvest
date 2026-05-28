@@ -1,8 +1,10 @@
 import os
 import vertexai
 from vertexai.preview import reasoning_engines
+from dotenv import load_dotenv
+load_dotenv("functions/.env")
 
-vertexai.init(project="micro-harvest", location="us-west1", staging_bucket="gs://micro-harvest-vertex-staging-168460245545")
+vertexai.init(project="micro-harvest", location="us-west1", staging_bucket=f"gs://micro-harvest-vertex-staging-{os.getenv('AGENT_PROJECT_NUMBER')}")
 
 class MicroHarvestEngine:
     def set_up(self):

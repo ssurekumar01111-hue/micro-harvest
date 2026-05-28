@@ -17,7 +17,10 @@ export async function queryMicroHarvestAgent(listingData: {
   toolCallsExecuted: number;
   mcpTransportersFound: number;
 }> {
-  const agentId = process.env.AGENT_ID || "agent_1779879402783";
+  const agentId = process.env.AGENT_ID || "";
+  if (!agentId) {
+    throw new Error("AGENT_ID not set in environment. Cannot call Reasoning Engine.");
+  }
   const project = process.env.AGENT_PROJECT || "micro-harvest";
 
   // STEP 1 — Call Elastic MCP directly first (reliable)
@@ -137,8 +140,8 @@ Based on these MCP results, return the logistics recommendation JSON.`;
     try {
       const { VertexAI } = await import("@google-cloud/vertexai");
       const vertexAI = new VertexAI({
-        project: "micro-harvest",
-        location: "asia-south1"
+        project: process.env.AGENT_PROJECT || "micro-harvest",
+        location: process.env.AGENT_REGION || "asia-south1"
       });
       const model = vertexAI.getGenerativeModel({
         model: "gemini-2.5-flash"

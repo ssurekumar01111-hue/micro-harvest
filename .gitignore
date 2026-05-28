@@ -52,3 +52,8 @@ PHASE_1_EVOLUTION_PLAN.md
 test-payload.json
 indexes
 functions/deploy_agent.py
+
+# Python
+__pycache__/
+*.pyc
+.python-version
