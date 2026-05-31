@@ -3,6 +3,11 @@
 **Google Cloud Rapid Agent Hackathon 2026 · Elastic Track**
 
 > Connecting Growers, Producers, and Transporters through conversational AI, real-time geo-matching, and automated payment settlement — built for rural India.
+## 📄 Technical Documentation
+
+Detailed architecture, AI workflow, Elasticsearch integration, offline-first design, and implementation details:
+
+[Micro-Harvest Technical Documentation](docs/micro_harvest_documentation.pdf)
 
 [![Demo Video](https://img.shields.io/badge/▶%20Demo%20Video-YouTube-red?style=for-the-badge&logo=youtube)](https://youtu.be/0ZdplkglDBo)
 [![Admin Panel](https://img.shields.io/badge/Admin%20Panel-Live-brightgreen?style=for-the-badge&logo=firebase)](https://micro-harvest.web.app)
