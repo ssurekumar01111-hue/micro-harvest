@@ -34,7 +34,7 @@
 
 ## 🔄 System Flow
 
-![Micro-Harvest Flow Diagram](docs/micro_harvest_demo_flow.png)
+![Micro-Harvest Flow Diagram](micro_harvest_demo_flow.png)
 
 ### How it works
 
