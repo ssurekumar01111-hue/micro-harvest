@@ -205,7 +205,9 @@ firebase deploy --only hosting:landing
 
 ---
 Demo Credentials:
-
+Grower App +16666666666 OTP- 123456 Firebase test phone number
+Producer App +918888888888 OTP- 123456 Firebase test phone number
+Transporter App +917777777777  OTP- 123456 Firebase test phone number
 Email: admin@microharvest.com
 Password: Admin@123
 
