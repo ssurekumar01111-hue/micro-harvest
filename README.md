@@ -5,10 +5,16 @@
 > Connecting Growers, Producers, and Transporters through conversational AI, real-time geo-matching, and automated payment settlement — built for rural India.
 
 **Admin Panel:** https://micro-harvest.web.app
-**Hackathon:** [Google Cloud Rapid Agent Hackathon 2026](https://rapid-agent.devpost.com)
+**Hackathon:** [Google Cloud Rapid Agent Hackathon 2026]
 **Track:** Elastic Track · Prize Pool: $10,000
 **Built by:** Morning Star · Banda, Uttar Pradesh, India
+## 📱 Download Apps
 
+Farmer (Grower):     https://github.com/ssurekumar01111-hue/micro-harvest/releases/download/v1.0.0/grower-release.apk
+Buyer (Producer):    https://github.com/ssurekumar01111-hue/micro-harvest/releases/download/v1.0.0/producer-release.apk
+Driver (Transporter):https://github.com/ssurekumar01111-hue/micro-harvest/releases/download/v1.0.0/transporter-release.apk
+
+Available in the latest release.
 ---
 
 ## 🎯 Problem Statement
@@ -135,7 +141,7 @@ Grower speaks listing → Gemini extracts fields → Listing indexed to Elastics
 ### 1. Clone & Install
 
 ```bash
-git clone https://github.com/[username]/micro-harvest.git
+git clone https://github.com/ssurekumar01111-hue/micro-harvest.git
 cd micro-harvest
 ```
 
@@ -183,9 +189,6 @@ cd apps/admin && ./build.ps1       # Deploys to Firebase Hosting
 | Producer App | +918888888888 | 123456 |
 | Transporter App | +917777777777 | 123456 |
 | Admin Panel | admin@microharvest.com | Admin@123 |
-
-**Stripe Test Card:** `4242 4242 4242 4242` · Any future expiry · Any CVV
-
 ---
 
 ## 📁 Repository Structure
@@ -224,7 +227,7 @@ micro-harvest/
 
 ## 📅 Timeline
 
-Built in **6 days** (May 17–23, 2026) for the Google Cloud Rapid Agent Hackathon 2026.
+Built in **10 days** (May 17–27, 2026) for the Google Cloud Rapid Agent Hackathon 2026.
 
 ---
 
