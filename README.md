@@ -204,6 +204,12 @@ firebase deploy --only hosting:landing
 | 📦 GitHub Releases | https://github.com/ssurekumar01111-hue/micro-harvest/releases/tag/v1.0.0 |
 
 ---
+Demo Credentials:
+
+Email: admin@microharvest.com
+Password: Admin@123
+
+These credentials are provided solely for judging and demonstration purposes.
 
 ## 👤 Built By
 
