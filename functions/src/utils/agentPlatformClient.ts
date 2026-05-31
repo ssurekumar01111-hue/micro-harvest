@@ -1,5 +1,5 @@
 import { GoogleAuth } from "google-auth-library";
-import { callMcpTool } from "./elasticMcpClient";
+import { geminiWithFallback, INTELLIGENCE_MODEL_CHAIN } from "./geminiWithFallback";
 
 const auth = new GoogleAuth({
   scopes: ["https://www.googleapis.com/auth/cloud-platform"],
@@ -12,10 +12,12 @@ export async function queryMicroHarvestAgent(listingData: {
   latitude: number;
   longitude: number;
   listingId: string;
+  growerId: string;
 }): Promise<{
   responseText: string;
   toolCallsExecuted: number;
   mcpTransportersFound: number;
+  matchedTransporterIds: string[];
 }> {
   const agentId = process.env.AGENT_ID || "";
   if (!agentId) {
@@ -23,45 +25,27 @@ export async function queryMicroHarvestAgent(listingData: {
   }
   const project = process.env.AGENT_PROJECT || "micro-harvest";
 
-  // STEP 1 — Call Elastic MCP directly first (reliable)
-  let mcpResultText = "No transporters found.";
-  let mcpTransportersFound = 0;
-  try {
-    const mcpResult = await callMcpTool(
-      "find_nearby_transporters",
-      {
-        nlQuery: `Find transporters within 100km of latitude ${listingData.latitude} longitude ${listingData.longitude}`
-      }
-    );
-    const content = mcpResult?.content || [];
-    const textContent = content.find((c: any) => c.type === "text");
-    if (textContent?.text) {
-      // Extract transporter IDs explicitly for the agent
-      const mcpParsed = JSON.parse(textContent.text);
-      const esqlResult = mcpParsed.results?.find((r: any) => r.type === "esql_results");
-      const transporterRows = esqlResult?.data?.values || [];
-      const uidIndex = esqlResult?.data?.columns?.findIndex((c: any) => c.name === "uid") ?? 0;
-      const transporterIds = transporterRows.map((row: any) => row[uidIndex]).filter(Boolean);
-      mcpResultText = JSON.stringify({
-        transporters_found: transporterRows.length,
-        transporter_ids: transporterIds,
-        raw: textContent.text.substring(0, 600),
-      });
-      mcpTransportersFound = transporterRows.length;
-    }
-    console.log(`[MCP] find_nearby_transporters executed successfully`);
-    console.log(`[MCP] Transporters found: ${mcpTransportersFound}`);
-  } catch (mcpError) {
-    console.warn("[MCP] Tool call failed:", mcpError);
-  }
+  // STEP 1 — Build clean prompt (agent calls MCP itself)
+  const message = `You are processing a crop listing for the Micro-Harvest agricultural marketplace.
 
-  // STEP 2 — Call Agent Platform Studio agent
-  const message = `Crop: ${listingData.cropType}, Weight: ${listingData.weightKg}kg, Perishability: ${listingData.perishTier}, Location: latitude ${listingData.latitude} longitude ${listingData.longitude}, Radius: 100km.
+Listing details:
+- Crop: ${listingData.cropType}
+- Weight: ${listingData.weightKg}kg
+- Perishability: ${listingData.perishTier}
+- Location: latitude ${listingData.latitude} longitude ${listingData.longitude}
+- Grower: ${listingData.growerId}
 
-Elastic MCP find_nearby_transporters already executed. Results:
-${mcpResultText}
+REQUIRED: Call find_nearby_transporters with this exact nlQuery: "Find available transporters within 100km of latitude ${listingData.latitude} longitude ${listingData.longitude}". Do NOT filter by crop type.
 
-Based on these MCP results, return the logistics recommendation JSON.`;
+Then return ONLY this JSON:
+{
+  "weatherRisk": "LOW|MEDIUM|HIGH",
+  "perishabilityRisk": "LOW|MEDIUM|HIGH", 
+  "recommendedVehicle": "REFRIGERATED|FLATBED|STANDARD",
+  "urgencyBoost": 0-20,
+  "matchedTransporterIds": ["id1","id2"],
+  "reasoning": "2-3 sentences"
+}`;
 
   try {
     const client = await auth.getClient();
@@ -86,51 +70,111 @@ Based on these MCP results, return the logistics recommendation JSON.`;
       }),
     });
 
-    const responseText_raw = await response.text();
-    console.log(`[Agent Builder] Status: ${response.status}`);
-    console.log(`[Agent Builder] Raw: ${responseText_raw.substring(0, 500)}`);
-
     if (!response.ok) {
-      throw new Error(`Agent API error ${response.status}: ${responseText_raw}`);
+      const errText = await response.text();
+      throw new Error(`Agent API error ${response.status}: ${errText}`);
     }
 
-    // Try direct JSON response first (non-SSE fallback)
-    let responseText = "";
+    console.log(`[Agent Builder] Status: ${response.status} — reading SSE stream...`);
+
+    let finalText = "";
+    let toolCallCount = 0;
+    let buffer = "";
+
+    const reader = (response.body as any).getReader();
+    const decoder = new TextDecoder();
+    const deadline = Date.now() + 90000;
+
     try {
-      const parsed = JSON.parse(responseText_raw);
-      // Extract text from content.parts[0].text structure
-      responseText = parsed?.content?.parts?.[0]?.text
-        || parsed?.output?.message
-        || parsed?.output?.text
-        || "";
-    } catch {
-      // Parse as SSE line by line
-      const lines = responseText_raw.split("\n");
-      for (const line of lines) {
-        if (line.startsWith("data: ")) {
+      while (Date.now() < deadline) {
+        const { done, value } = await reader.read();
+        if (done) {
+          console.log(`[Agent Builder] Stream ended naturally`);
+          break;
+        }
+
+        buffer += decoder.decode(value, { stream: true });
+
+        // Split on newlines — each line may be a complete JSON object
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed) continue;
+
+          // Strip "data: " prefix if present (handle both formats)
+          const jsonStr = trimmed.startsWith("data: ")
+            ? trimmed.slice(6)
+            : trimmed;
+
+          if (jsonStr === "[DONE]") continue;
+
           try {
-            const chunk = JSON.parse(line.slice(6));
-            const text = chunk?.content?.parts?.[0]?.text
-              || chunk?.text
-              || chunk?.output?.text
-              || "";
-            if (text) responseText += text;
+            const chunk = JSON.parse(jsonStr);
+
+            // Extract parts from all known locations
+            const parts = chunk?.content?.parts
+              || chunk?.parts
+              || chunk?.candidates?.[0]?.content?.parts
+              || [];
+
+            for (const part of parts) {
+              if (part.functionCall || part.function_call) {
+                toolCallCount++;
+                const name = part.functionCall?.name || part.function_call?.name;
+                console.log(`[Agent Builder] Tool call: ${name}`);
+              }
+              if (part.text && part.text.trim()) {
+                finalText = part.text;
+                console.log(`[Agent Builder] Text: ${part.text.substring(0, 150)}`);
+              }
+            }
+
+            // Check finish signal
+            const finishReason = chunk?.candidates?.[0]?.finishReason
+              || chunk?.finish_reason;
+            if (finishReason === "STOP") {
+              console.log(`[Agent Builder] STOP signal received`);
+            }
+
           } catch {
-            // skip unparseable lines
+            // Chunk split across packets — keep in buffer and wait for more
+            buffer = trimmed + "\n" + buffer;
+            break;
           }
         }
       }
+    } catch (streamErr: any) {
+      console.warn(`[Agent Builder] Stream error: ${streamErr.message}`);
+    } finally {
+      try { reader.releaseLock(); } catch {}
     }
 
-    // Strip markdown code fences if present
-    responseText = responseText.replace(/^```json\n?/, "").replace(/\n?```$/, "").trim();
+    console.log(`[Agent Builder] Tool calls detected: ${toolCallCount}`);
 
-    console.log(`[Agent Builder] Parsed response: ${responseText.substring(0, 300)}`);
+    let responseText = finalText
+      .replace(/^```json\n?/, "")
+      .replace(/\n?```$/, "")
+      .trim();
+
+    console.log(`[Agent Builder] Final responseText: ${responseText.substring(0, 500)}`);
+
+    let mcpTransportersFound = 0;
+    let parsedMatchedIds: string[] = [];
+    try {
+      const parsed = JSON.parse(responseText);
+      parsedMatchedIds = parsed?.matchedTransporterIds || [];
+      mcpTransportersFound = parsedMatchedIds.length;
+    } catch {
+      mcpTransportersFound = 0;
+    }
 
     return {
       responseText,
-      toolCallsExecuted: mcpTransportersFound > 0 ? 1 : 0,
+      toolCallsExecuted: toolCallCount,
       mcpTransportersFound,
+      matchedTransporterIds: parsedMatchedIds,
     };
 
   } catch (agentError) {
@@ -138,28 +182,39 @@ Based on these MCP results, return the logistics recommendation JSON.`;
 
     // Fallback — use Gemini directly if Agent Platform fails
     try {
-      const { VertexAI } = await import("@google-cloud/vertexai");
-      const vertexAI = new VertexAI({
-        project: process.env.AGENT_PROJECT || "micro-harvest",
-        location: process.env.AGENT_REGION || "asia-south1"
+      const { result: fallbackResult, modelUsed } = await geminiWithFallback(message, {
+        systemInstruction: "You are a logistics intelligence agent. Return JSON only.",
+        generationConfig: { temperature: 0.1 },
+        modelChain: INTELLIGENCE_MODEL_CHAIN,
       });
-      const model = vertexAI.getGenerativeModel({
-        model: "gemini-2.5-flash"
-      });
-      const result = await model.generateContent(message);
-      const text = result.response.candidates?.[0]?.content?.parts?.[0]?.text || "";
-      console.log("[Agent Builder] Fallback to Gemini direct succeeded");
+      const text = fallbackResult.response.candidates?.[0]?.content?.parts?.[0]?.text || "";
+      console.log(`[Agent Builder] Fallback model used: ${modelUsed}`);
+
+      // Strip markdown code fences if present
+      const cleanText = text.replace(/^```json\n?/, "").replace(/\n?```$/, "").trim();
+      let mcpFound = 0;
+      let matchedIds: string[] = [];
+      try {
+        const parsed = JSON.parse(cleanText);
+        matchedIds = parsed?.matchedTransporterIds || [];
+        mcpFound = matchedIds.length;
+      } catch {
+        mcpFound = 0;
+      }
+
       return {
-        responseText: text,
-        toolCallsExecuted: mcpTransportersFound > 0 ? 1 : 0,
-        mcpTransportersFound,
+        responseText: cleanText,
+        toolCallsExecuted: mcpFound > 0 ? 1 : 0,
+        mcpTransportersFound: mcpFound,
+        matchedTransporterIds: matchedIds,
       };
     } catch (fallbackError) {
       console.error("[Agent Builder] Fallback also failed:", fallbackError);
       return {
         responseText: "",
         toolCallsExecuted: 0,
-        mcpTransportersFound,
+        mcpTransportersFound: 0,
+        matchedTransporterIds: [],
       };
     }
   }

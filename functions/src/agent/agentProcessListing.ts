@@ -3,7 +3,7 @@ import { logger } from "firebase-functions";
 import * as admin from "firebase-admin";
 import * as dotenv from "dotenv";
 import { IntelligenceService } from "./intelligence";
-import { generateWithFallback } from "../utils/geminiWithFallback";
+import { geminiWithFallback, INTELLIGENCE_MODEL_CHAIN } from "../utils/geminiWithFallback";
 import { listMcpTools } from "../utils/elasticMcpClient";
 import { queryMicroHarvestAgent } from "../utils/agentPlatformClient";
 
@@ -15,7 +15,9 @@ dotenv.config();
  */
 export const agentProcessListing = functions.firestore.onDocumentCreated({
   document: "listings/{listingId}",
-  region: "asia-south1"
+  region: "asia-south1",
+  timeoutSeconds: 120,
+  memory: "512MiB"
 }, async (event) => {
   const db = admin.firestore();
   const snap = event.data;
@@ -56,41 +58,55 @@ export const agentProcessListing = functions.firestore.onDocumentCreated({
     };
 
     // Phase 2: Intelligence Layer
-    const intelligence = await IntelligenceService.analyzeListing(extractedData, plotLocation, growerId);
-    const rankedTransporters = await IntelligenceService.rankTransporters(extractedData, plotLocation, intelligence.recommendedRadiusKm);
+    const [intelligence, rankedTransporters] = await Promise.all([
+      IntelligenceService.analyzeListing(extractedData, plotLocation, growerId),
+      IntelligenceService.rankTransporters(extractedData, plotLocation, 100).catch(err => {
+        console.warn("[Transporters] Parallel call failed:", err.message);
+        return [];
+      })
+    ]);
 
     // Phase 3: Query Google Cloud Agent Platform agent (ADK)
-    let agentPlatformResponse = "";
-    let agentPlatformToolCalls = 0;
-    let mcpTransportersFound = 0;
+    let agentResult: any = { responseText: "", toolCallsExecuted: 0, mcpTransportersFound: 0, matchedTransporterIds: [] };
     try {
-      const agentResult = await queryMicroHarvestAgent({
-        cropType: extractedData.cropType,
-        weightKg: extractedData.weightKg,
-        perishTier: extractedData.perishTier,
-        latitude: plotLocation.latitude,
-        longitude: plotLocation.longitude,
-        listingId: listingId,
-      });
-
-      agentPlatformResponse = agentResult.responseText;
-      agentPlatformToolCalls = agentResult.toolCallsExecuted;
-      mcpTransportersFound = agentResult.mcpTransportersFound;
+      agentResult = await Promise.race([
+        queryMicroHarvestAgent({
+          cropType: extractedData.cropType,
+          weightKg: extractedData.weightKg,
+          perishTier: extractedData.perishTier,
+          latitude: plotLocation.latitude,
+          longitude: plotLocation.longitude,
+          listingId: listingId,
+          growerId: growerId,
+        }),
+        new Promise<any>((_, reject) => 
+          setTimeout(() => reject(new Error("Agent timeout after 35s")), 35000)
+        )
+      ]);
       console.log("[ADK] Agent Platform integration successful");
-    } catch (adkError) {
-      console.warn("[ADK] Agent Platform query failed, continuing:", adkError);
+    } catch (adkError: any) {
+      console.warn("[ADK] Agent Platform query failed or timed out, continuing:", adkError.message);
     }
 
     // Phase 4: Generate Operational Summary
-    // Parse agentPlatformResponse JSON
+    // Parse agent response JSON
     let parsedAgent: any = {};
     try {
-      parsedAgent = typeof agentPlatformResponse === "string"
-        ? JSON.parse(agentPlatformResponse)
-        : agentPlatformResponse;
+      parsedAgent = typeof agentResult.responseText === "string"
+        ? JSON.parse(agentResult.responseText)
+        : agentResult.responseText;
     } catch {
       parsedAgent = {};
     }
+
+    // Use matchedTransporterIds directly from agent result
+    const finalMatchedIds = agentResult.matchedTransporterIds?.length > 0
+      ? agentResult.matchedTransporterIds
+      : (intelligence.matchedTransporterIds || []);
+
+    const mcpTransportersFound = agentResult.mcpTransportersFound
+      || agentResult.matchedTransporterIds?.length
+      || (intelligence.matchedTransporterIds?.length ?? 0);
 
     // Build unified intelligence object — new field names, backward compatible
     const unifiedIntelligence = {
@@ -100,7 +116,7 @@ export const agentProcessListing = functions.firestore.onDocumentCreated({
       recommendedVehicle: parsedAgent.recommendedVehicle || intelligence.recommendedTransportType || "STANDARD",
       urgencyBoost: parsedAgent.urgencyBoost ?? intelligence.urgencyScore ?? 0,
       reasoning: parsedAgent.reasoning || intelligence.decisionFactors?.join(". ") || "",
-      matchedTransporterIds: parsedAgent.matchedTransporterIds || rankedTransporters.map(t => t.uid) || [],
+      matchedTransporterIds: finalMatchedIds.length > 0 ? finalMatchedIds : rankedTransporters.map(t => t.uid),
 
       // BACKWARD COMPAT fields (so Flutter apps keep working during migration)
       urgencyScore: parsedAgent.urgencyBoost ?? intelligence.urgencyScore ?? 0,
@@ -112,7 +128,7 @@ export const agentProcessListing = functions.firestore.onDocumentCreated({
       // NEW tracking field
       elasticIndexed: true,
       processedAt: new Date().toISOString(),
-      agentModel: "gemini-2.5-flash",
+      agentModel: intelligence.agentModel || "gemini-3.1-flash-lite-preview",
       historicalPriceAvg: intelligence?.historicalPriceAvg ?? null,
       recommendedRadiusKm: intelligence.recommendedRadiusKm,
     };
@@ -123,28 +139,43 @@ export const agentProcessListing = functions.firestore.onDocumentCreated({
 
     const summaryPrompt = "You are a calm, professional agricultural logistics coordinator.\nGenerate a concise operational summary of this listing and the reasoning behind its parameters.\n\nData: " + JSON.stringify(extractedData) + "\nReasoning Factors: " + summaryReasoning + "\n\nFocus on the logistics and risks. Keep it under 3 sentences.";
 
-    const summaryText = await generateWithFallback(summaryPrompt);
+    // Generate summary asynchronously — don't await it
+    geminiWithFallback(summaryPrompt, {
+      systemInstruction: "You are a calm, professional agricultural logistics coordinator. Generate concise summaries.",
+      generationConfig: { temperature: 0.3 },
+      modelChain: INTELLIGENCE_MODEL_CHAIN
+    }).then(({ result, modelUsed }) => {
+      const summaryText = result.response.candidates?.[0]?.content?.parts?.[0]?.text || "";
+      console.log(`[Agent] Summary generated with model: ${modelUsed}`);
+      return snap.ref.update({
+        operationalSummary: summaryText,
+        summaryModel: modelUsed,
+      });
+    }).catch(err => console.warn("[Summary] Failed:", err.message));
 
-    // Update the listing with intelligence and summary
+    // Update the listing with intelligence immediately
     await snap.ref.update({
       intelligence: unifiedIntelligence,
-      operationalSummary: summaryText,
-      agentPlatformResponse,
+      agentPlatformResponse: agentResult.responseText,
       updatedAt: admin.firestore.FieldValue.serverTimestamp()
     });
 
-    // Final Log Entry
-    await db.collection("agentLogs").add({
+
+    // Final Log Entry — Ensure all data is collected before writing
+    const finalLog = {
       listingId,
       growerId,
-      rawInput: data.rawInput || "CREATED_VIA_APP",
-      intelligence: unifiedIntelligence,
-      matchedTransporterIds: rankedTransporters.map(t => t.uid),
-      agentPlatformResponse,
-      agentPlatformToolCalls,
+      agentPlatformResponse: agentResult.responseText || "",
+      agentPlatformToolCalls: agentResult.toolCallsExecuted,
       mcpTransportersFound,
+      matchedTransporterIds: finalMatchedIds,
+      intelligence: unifiedIntelligence,
+      rawInput: data.rawInput || "CREATED_VIA_APP",
       createdAt: new Date(),
-    });
+    };
+
+    await db.collection("agentLogs").doc(listingId).set(finalLog);
+    console.log(`[Agent] AgentLog written with mcpTransportersFound: ${mcpTransportersFound}`);
 
     logger.log(`[Agent] Successfully processed intelligence for listing ${listingId}`);
 

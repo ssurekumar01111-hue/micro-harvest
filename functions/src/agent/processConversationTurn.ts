@@ -2,7 +2,7 @@ import * as functions from "firebase-functions/v2";
 import * as admin from "firebase-admin";
 import * as dotenv from "dotenv";
 import { IntelligenceService } from "./intelligence";
-import { generateWithFallback } from "../utils/geminiWithFallback";
+import { geminiWithFallback, CONVERSATION_MODEL_CHAIN } from "../utils/geminiWithFallback";
 
 dotenv.config();
 
@@ -54,20 +54,23 @@ export const processConversationTurn = functions.https.onCall({
 
   // 1. Extraction Pass
 
-  const extractionPrompt = `You are an operational agricultural logistics assistant.
-Your goal is to accurately extract listing data for a farming marketplace.
-Maintain a calm, professional, and logistics-focused tone. 
+  const extractionPrompt = `You are Micro-Harvest's crop listing agent for Indian farmers.
 
-You support English only.
-Extract data accurately from English messages.
+Extract listing details from the farmer's message. Be aggressive — extract everything mentioned in the FIRST message before asking any questions.
+
+EXTRACTION RULES:
+- "asking X per ton" / "price X" / "X per ton" / "rate X" → askingPricePerTon = X
+- "X bins/crates/sacks/quintals/trolleys/macro bins" → containerType + containerCount
+- "X kg/ton/quintal" → weightKg (convert: 1 ton = 1000kg, 1 quintal = 100kg)
+- "today" / "now" / "urgent" / "immediately" → perishTier = HOURS_24
+- "tomorrow" / "48 hours" → perishTier = HOURS_48
+- "this week" / "72 hours" → perishTier = HOURS_72
+- crop weight from containers: 20 macro bins × 500kg = 10000kg
+
+CRITICAL: If the farmer provides price in their message, DO NOT ask for price again. Extract it directly.
 
 Current extracted data so far: ${JSON.stringify(existingData)}
 New message from grower: "${message}"
-
-Only update fields that are mentioned in the new message.
-Keep existing values for fields not mentioned.
-Never set a field to null if it already has a value.
-Return complete updated JSON with ALL fields.
 
 Return ONLY JSON with these fields (use null if unknown):
 {
@@ -75,23 +78,26 @@ Return ONLY JSON with these fields (use null if unknown):
   "containerType": "MACRO_BIN" | "HALF_BIN" | "LUG_BOX" | "BULK_BAG" | "CRATE" | "SACK" | "QUINTAL" | "TROLLEY" | null,
   "containerCount": number | null,
   "weightKg": number | null,
-  "perishTier": string | null,
+  "perishTier": "HOURS_24" | "HOURS_48" | "DAYS_3" | null,
   "askingPricePerTon": number | null
-}
+}`;
 
-CONTAINER TYPE RULES:
-- macro bin / macro bins → MACRO_BIN (500kg each)
-- half bin / half bins → HALF_BIN (250kg each)
-- lug box / lug boxes → LUG_BOX (20kg each)
-- bulk bag / bulk bags → BULK_BAG (500kg each)
-- crate / crates → CRATE (25kg each)
-- sack / sacks / bori → SACK (50kg each)
-- quintal / quintals → QUINTAL (100kg each)
-- trolley / trolleys → TROLLEY (1000kg each)`;
+  const { result: extractionResult, modelUsed } = await geminiWithFallback(extractionPrompt, {
+    systemInstruction: "You are Micro-Harvest's agricultural listing agent. Be aggressive in extraction. Return JSON only.",
+    generationConfig: { 
+      temperature: 0.3, 
+      response_mime_type: "application/json",
+      maxOutputTokens: 500,
+    },
+    modelChain: CONVERSATION_MODEL_CHAIN
+  });
 
-  const responseText = await generateWithFallback(extractionPrompt);
+  const responseText = extractionResult.response.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
+  console.log(`[ConversationTurn] Model used: ${modelUsed}`);
+
   const jsonMatch = responseText.match(/\{[\s\S]*\}/);
   const geminiOutput = jsonMatch ? JSON.parse(jsonMatch[0]) : {};
+
 
   // 2. Merge Data
   const updatedData = {
@@ -188,23 +194,45 @@ CONTAINER TYPE RULES:
     }
   }
 
+  // Manual weight extraction fallback (tons, quintals)
+  if (!updatedData.weightKg) {
+    const tonMatch = message.match(/(\d+(?:\.\d+)?)\s*(?:ton|tons)/i);
+    if (tonMatch) {
+      updatedData.weightKg = parseFloat(tonMatch[1]) * 1000;
+    } else {
+      const quintalMatch = message.match(/(\d+(?:\.\d+)?)\s*(?:quintal|quintals)/i);
+      if (quintalMatch) {
+        updatedData.weightKg = parseFloat(quintalMatch[1]) * 100;
+      }
+    }
+  }
+
   // BUG 2 — Price asked twice (4000 not recognized)
-  // If we just asked for price and user replied with a number, extract it as price
-  const lastAssistantMsg = state.messages
-    .filter((m: any) => m.role === 'assistant')
-    .pop()?.content || '';
+  // Extract price aggressively from message
+  if (!updatedData.askingPricePerTon) {
+    const lastAssistantMsg = state.messages
+      .filter((m: any) => m.role === 'assistant')
+      .pop()?.content || '';
 
-  const priceWasAsked = lastAssistantMsg.includes('price') 
-    || lastAssistantMsg.includes('per ton');
+    const priceWasAsked = lastAssistantMsg.includes('price') 
+      || lastAssistantMsg.includes('per ton');
 
-  if (priceWasAsked && !updatedData.askingPricePerTon) {
-    const priceMatch = message.match(/\b(\d+(?:,\d+)?(?:\.\d+)?)\b/);
+    const rateMatch = message.match(/(?:rate|price|asking)\s*(\d+(?:,\d+)?(?:\.\d+)?)/i);
+    const perTonMatch = message.match(/(\d+(?:,\d+)?(?:\.\d+)?)\s*(?:per ton|\/ton)/i);
+    const priceMatch = rateMatch || perTonMatch;
+
     if (priceMatch) {
       const price = parseFloat(priceMatch[1].replace(',', ''));
-      // Only use as price if it's a reasonable price (> 100)
-      // and not already used as containerCount
       if (price > 100 && price !== updatedData.containerCount) {
         updatedData.askingPricePerTon = price;
+      }
+    } else if (priceWasAsked) {
+      const simpleMatch = message.match(/\b(\d+(?:,\d+)?(?:\.\d+)?)\b/);
+      if (simpleMatch) {
+        const price = parseFloat(simpleMatch[1].replace(',', ''));
+        if (price > 100 && price !== updatedData.containerCount) {
+          updatedData.askingPricePerTon = price;
+        }
       }
     }
   }

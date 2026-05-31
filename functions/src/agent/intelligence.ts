@@ -2,6 +2,7 @@ import * as admin from "firebase-admin";
 import { logger } from "firebase-functions";
 import { Client } from "@elastic/elasticsearch";
 import { callMcpTool } from "../utils/elasticMcpClient";
+import { geminiWithFallback, INTELLIGENCE_MODEL_CHAIN } from "../utils/geminiWithFallback";
 
 const getDb = () => {
   if (admin.apps.length === 0) {
@@ -101,65 +102,47 @@ export class IntelligenceService {
     const history = await this.getHistoricalTrends(data.cropType);
     const memory = await this.getGrowerMemory(growerId);
 
-    const factors: string[] = [];
-    let urgencyScore = 50;
+    const prompt = `You are an agricultural logistics intelligence agent for Indian farmers.
+Analyze this listing and provide logistics recommendations.
 
-    if (weather.rainfallProb > 0.5) {
-      urgencyScore += 20;
-      factors.push("Priority increased due to high rainfall probability (65%).");
-    }
+Listing Data: ${JSON.stringify(data)}
+Weather: ${JSON.stringify(weather)}
+Historical Avg Price: ${history?.avg_price?.value || "Unknown"}
+Grower Prefs: ${JSON.stringify(memory)}
 
-    if (data.perishTier === "HOURS_12" || data.perishTier === "HOURS_24") {
-      urgencyScore += 15;
-      factors.push(`Urgent delivery requested (${data.perishTier}).`);
-    }
+Return ONLY JSON:
+{
+  "weatherRisk": "LOW" | "MEDIUM" | "HIGH",
+  "perishabilityRisk": "LOW" | "MEDIUM" | "HIGH",
+  "recommendedVehicle": "REFRIGERATED" | "FLATBED" | "STANDARD",
+  "urgencyBoost": number (0-100),
+  "reasoning": "string",
+  "urgencyScore": number (0-100),
+  "decisionFactors": ["string"],
+  "recommendedTransportType": "REFRIGERATED" | "STANDARD",
+  "recommendedRadiusKm": number
+}`;
 
-    const avgPrice = history?.avg_price?.value;
-    if (avgPrice && data.askingPriceUSD > avgPrice * 1.2) {
-      factors.push("Price is 20% higher than local seasonal average.");
-    }
+    const { result, modelUsed } = await geminiWithFallback(prompt, {
+      systemInstruction: "You are an agricultural logistics intelligence agent for Indian farmers.",
+      generationConfig: { temperature: 0.2, response_mime_type: "application/json" },
+      modelChain: INTELLIGENCE_MODEL_CHAIN,
+    });
 
-    if (memory?.preferredTransportType === "REFRIGERATED" && data.perishTier === "HOURS_12") {
-      factors.push("Selecting refrigerated transport based on your historical preference.");
-    }
-
-    const cropPerishability: Record<string, string> = {
-      TOMATO: 'HIGH',
-      MANGO: 'HIGH',
-      POTATO: 'LOW',
-      ONION: 'LOW',
-      WHEAT: 'LOW',
-      RICE: 'LOW',
-      SUGARCANE: 'MEDIUM',
-      COTTON: 'LOW',
-      SOYBEAN: 'LOW',
-      CHICKPEA: 'LOW',
-      PINOT_NOIR: 'HIGH',
-      MERLOT: 'HIGH',
-      CABERNET: 'HIGH',
-      CHARDONNAY: 'HIGH',
-      RIESLING: 'HIGH',
-    };
-
-    const cropRisk = cropPerishability[(data.cropType || "").toUpperCase()] || "HIGH";
+    const responseText = result.response.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
+    const aiResult = JSON.parse(responseText);
 
     return {
-      urgencyScore: Math.min(urgencyScore, 100),
-      urgencyBoost: Math.min(urgencyScore, 100),
-      weatherRisk: weather.rainfallProb > 0.6 ? "HIGH" : "LOW",
-      perishabilityRisk: data.perishTier.startsWith("HOURS") || cropRisk === "HIGH" ? "HIGH" : (cropRisk === "MEDIUM" ? "MEDIUM" : "LOW"),
-      recommendedRadiusKm: urgencyScore > 70 ? 150 : 100,
-      recommendedTransportType: data.perishTier === "HOURS_12" || cropRisk === "HIGH" ? "REFRIGERATED" : "STANDARD",
-      recommendedVehicle: data.perishTier === "HOURS_12" || cropRisk === "HIGH" ? "REFRIGERATED" : "STANDARD",
-      decisionFactors: factors,
-      reasoning: factors.join(". "),
+      ...aiResult,
       matchedTransporterIds: [],
       elasticIndexed: false,
       processedAt: new Date().toISOString(),
-      agentModel: "gemini-2.5-flash",
-      historicalPriceAvg: avgPrice ?? null
+      agentModel: modelUsed,
+      historicalPriceAvg: history?.avg_price?.value ?? null
     };
   }
+
+
 
   static async rankTransporters(
     listingData: any,

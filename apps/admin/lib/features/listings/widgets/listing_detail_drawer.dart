@@ -63,7 +63,7 @@ class ListingDetailDrawer extends StatelessWidget {
                   ),
                   _buildDetailRow('Grower Name:', listing['growerName'] ?? 'N/A'),
                   _buildDetailRow('Producer Name:', listing['producerName'] ?? 'N/A'),
-                  _buildDetailRow('Price/Ton:', _formatCurrency((listing['pricePerTon'] as num?)?.toDouble() ?? 0.0)),
+                  _buildDetailRow('Price/Ton:', listing['askingPricePerTon'] != null ? '₹${listing['askingPricePerTon']}/ton' : 'TBD'),
                   _buildDetailRow('Created At:', _formatDateTime(listing['createdAt'] as Timestamp?)),
                   _buildDetailRow('Expires At:', _formatDateTime(listing['expiresAt'] as Timestamp?)),
                   _buildDetailRow('Gate 1 Time:', _formatDateTime(listing['gate1Time'] as Timestamp?)),

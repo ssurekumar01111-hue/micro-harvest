@@ -2,7 +2,7 @@ import * as functions from "firebase-functions/v2";
 import { logger } from "firebase-functions";
 import * as dotenv from "dotenv";
 import { Client } from "@elastic/elasticsearch";
-import { generateWithFallback } from "../utils/geminiWithFallback";
+import { geminiWithFallback, CONVERSATION_MODEL_CHAIN } from "../utils/geminiWithFallback";
 
 dotenv.config();
 
@@ -83,9 +83,14 @@ CROP TYPE MAP:
 - chickpea/chana → CHICKPEA
 `;
 
-    const responseText = await generateWithFallback(
-      extractionPrompt
-    );
+    const { result, modelUsed } = await geminiWithFallback(extractionPrompt, {
+      systemInstruction: "You are a produce marketplace search assistant. Return JSON only.",
+      generationConfig: { temperature: 0.1, response_mime_type: "application/json" },
+      modelChain: CONVERSATION_MODEL_CHAIN
+    });
+    
+    const responseText = result.response.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
+    console.log(`[producerSearch] Extraction model: ${modelUsed}`);
     
     const jsonMatch = responseText.match(/\{[\s\S]*\}/);
     let params: SearchParams;

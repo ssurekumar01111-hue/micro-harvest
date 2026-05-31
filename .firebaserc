@@ -1,5 +1,13 @@
 {
   "projects": {
     "default": "micro-harvest"
+  },
+  "targets": {
+    "micro-harvest": {
+      "hosting": {
+        "admin":   ["micro-harvest"],
+        "landing": ["micro-harvest-landing"]
+      }
+    }
   }
 }

@@ -19,11 +19,22 @@
       ]
     }
   ],
-  "hosting": {
-    "public": "apps/admin/build/web",
-    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
-    "rewrites": [
-      { "source": "**", "destination": "/index.html" }
-    ]
-  }
+  "hosting": [
+    {
+      "target": "admin",
+      "public": "apps/admin/build/web",
+      "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+      "rewrites": [
+        { "source": "**", "destination": "/index.html" }
+      ]
+    },
+    {
+      "target": "landing",
+      "public": "micro_harvest_landing/build/web",
+      "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+      "rewrites": [
+        { "source": "**", "destination": "/index.html" }
+      ]
+    }
+  ]
 }

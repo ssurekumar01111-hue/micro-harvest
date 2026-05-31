@@ -215,9 +215,9 @@ class _ListingsScreenState extends State<ListingsScreen> {
                                   DataCell(StatusBadge(status: status)),
                                   DataCell(Text(listing['growerName'] ?? 'N/A')),
                                   DataCell(Text(listing['producerName'] ?? 'N/A')),
-                                  DataCell(Text(listing['askingPriceUSD'] != null 
-                                      ? '\$${listing['askingPriceUSD'].toStringAsFixed(2)}' 
-                                      : (listing['pricePerTon'] != null ? '\$${listing['pricePerTon'].toStringAsFixed(2)}' : 'TBD'))),
+                                  DataCell(Text(listing['askingPricePerTon'] != null 
+                                      ? '₹${listing['askingPricePerTon']}/ton'
+                                      : 'TBD')),
                                   DataCell(Text(_formatDateTime(listing['createdAt'] as Timestamp?))),
                                   DataCell(Row(
                                     children: [
