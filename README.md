@@ -14,8 +14,7 @@ Farmer (Grower):     https://github.com/ssurekumar01111-hue/micro-harvest/releas
 Buyer (Producer):    https://github.com/ssurekumar01111-hue/micro-harvest/releases/download/v1.0.0/producer-release.apk
 Driver (Transporter):https://github.com/ssurekumar01111-hue/micro-harvest/releases/download/v1.0.0/transporter-release.apk
 
-Available in the latest release:
-https://github.com/ssurekumar01111-hue/releases/latest
+Available in the latest release.
 ---
 
 ## 🎯 Problem Statement
